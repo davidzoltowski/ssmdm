@@ -167,6 +167,7 @@ def Accumulator(beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]]), As=np.ones(
 
 """
 2D Accumulator
+TODO -> the V matrix should be D by M, or you should assert that D = M. 
 """
 class Accumulator2DObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D=2, M=0, lags=1, betas=np.ones(2,), sigmas=1e-3 * np.ones((3, 2)), a_diag=np.ones((3,2,1))):

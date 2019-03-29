@@ -1,0 +1,243 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2018
+
+% ready for submission
+% \usepackage{neurips_2018}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+     \usepackage[preprint]{neurips_2018}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+  %   \usepackage[final]{neurips_2018}
+
+% to avoid loading the natbib package, add option nonatbib:
+%     \usepackage[nonatbib]{neurips_2018}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{amsmath}
+\usepackage{wrapfig}  % Allow wrapping of text around figures
+
+% import definitions
+\input{dzdefs.tex}
+
+\title{}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{%
+%  David M.~Zoltowski\thanks{Use footnote for providing further information
+%    about author (webpage, alternative address)---\emph{not} for acknowledging
+%    funding agencies.} \\
+%  Princeton Neuroscience Institute\\
+%  Princeton University\\
+%  Princeton, NJ 08540 \\
+%  \texttt{zoltowski@princeton.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+\begin{document}
+% \nipsfinalcopy is no longer used
+
+\maketitle
+
+\begin{abstract}
+Here we write how decision-making models can be instantiated as constrained state-space models. 
+\end{abstract}
+
+\section{Decision-making models as constrained rSLDS}
+
+The models under consideration will in general have the following variables: a $D$-dimensional continuous latent state $x_t \in \mathbb{R}^D$, a set of $K$ discrete latent states $z_t \in \{ 1, 2, ... K \}$, $M$-dimensional inputs $u_t \in \mathbb{R}^M$, and $N$-dimensional observations $y_t \in \mathbb{R}^N$. 
+
+\subsection{rSLDS}
+In general, in an rSLDS the discrete state at time $t+1$ depends on the discrete and continuous states at time $t$ and the current input at time $t+1$. We define rSLDS following the treatment in \cite{linderman2017bayesian}.
+
+The transition probabilities are given by 
+\be
+\log p(z_{t+1} | z_t, x_t, u_{t+1}, R_{z_t}, W_{z_t}, r_{z_t}) \propto R_{z_t} x_t + r_{z_t} + W_{z_t} u_{t+1}
+\ee
+where the dependence on the continuous state is controlled by $R_{z_t}$, the dependence on the input is controlled by $W_{z_t}$, and $r_{z_t}$ is a bias that captures dependencies in the discrete states. 
+
+The continuous latent dynamics in each state are linear-Gaussian
+\be
+x_{t} = A_{z_t} x_{t-1} + V_{z_t} u_t + b_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, Q_{z_t}).
+\ee
+
+In an rSLDS, the observations are linear mappings from the continuous latent states 
+\be
+y_t = C_{z_t} x_t + d_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, S_{z_t}). 
+\ee
+However, we will also investigate more general emission distributions
+\be
+y_t \sim \mathcal{P}( f( C_{z_t} x_t + d_{z_t} ) ). 
+\ee
+
+\subsection{Drift-diffusion model}
+
+The drift-diffusion model is a 1-dimensional dynamics model of choice. It states that $x$ evolves according to a biased random walk. In discrete time, we formalize this as 
+\be
+x_t = x_{t-1} + \beta_c + \epsilon_t
+%dx = \beta_c \, dt + \epsilon_t
+\ee
+where $\beta_c$ is the strength of the evidence and $\epsilon_t \sim \mathcal{N}(0,\sigma^2)$. If $x$ crosses an upper or lower threshold (bound) at $\pm B$ then the accumulation process stops and $x$ is fixed at $\pm B$. In general, we may have a distribution over the initial value
+\be
+x_0 \sim \mathcal{N}(\mu_0, \sigma^2_0). 
+\ee
+
+
+We can write this as an rSLDS as follows. The state is a one dimensional variable $x_t \in \mathbb{R}$. There is a discrete state $z_t \in \{\mathsf{ramp}, \mathsf{left bound}, \mathsf{right bound}\}$ that indicates whether the continuous state has reached its threshold (bound). Let $u_t \in \mathbb{R}$ be the input, which specifies the amount of evidence to the left or right choice, which governs the dynamics of $x_t$. 
+
+The model is :
+\begin{align*}
+z_t &\sim p(x_{t-1}) \\
+x_t &= x_{t-1} + V_{z_t} u_t + \epsilon_t 
+\end{align*}
+where $\epsilon_t \sim \mathcal{N}(0, \sigma^2)$ and the input weights are constrained such that
+\begin{align*}
+V_{\mathsf{ramp}} &= \beta, \\
+V_{\mathsf{left bound}} = V_{\mathsf{right bound}} &= 0.
+\end{align*}
+The discrete transition probabilities are,
+\begin{align*}
+\log p(z_t = \textsf{left bound} \mid x_{t-1}) &\propto x_{t-1} - 1 \\
+\log p(z_t = \textsf{ramp} \mid x_{t-1}) &\propto 0 \\
+\log p(z_t = \textsf{right bound} \mid x_{t-1}) &\propto -x_{t-1} - 1
+\end{align*}
+
+\subsubsection{Alternative parameterization of DDM with discrete input levels}
+Here we consider the DDM for random dot motion (RDM). In RDM tasks, we typically have discrete input levels, and it is useful to consider learning a parameter $V_{z_t}$ for each input level. Let us say we have $C$ coherence levels. We can then parameterize with a one-hot input encoding the coherence level, such that $u_t \in \mathbb{R}^C$. Then, we can learn a $C$ dimensional vector of parameters $V_{z_t}$. The dynamics model in this case would be
+\begin{align*}
+z_t &\sim p(x_{t-1}) \\
+x_t &= x_{t-1} + V_{z_t}^\top u_t + \epsilon_t.
+\end{align*}
+
+We note that we can describe accumulation without a bound simply using an LDS. 
+
+\subsection{1D Accumulator model}
+time-varying input, leaky / impulsive dynamics 
+
+\subsection{Brunton model}
+time-varying input plus time-varying variance (with parameters governing input and variance). coupled LDS?
+(the important aspects of this are sensory noise, sensory adaptation, and non-identity dynamics)
+
+The 1D accumulator model from \cite{brunton2013rats} has the form
+\begin{align*}
+x_t &= 
+\begin{cases}
+0 & \text{if } |x_{t-1}|>B \\
+(1 + \lambda) \, x_{t-1} + \left( \delta_{t,t_R} \eta_R c_t - \delta_{t,t_L} \eta_L c_t \right) + \epsilon_t & \text{otherwise}
+\end{cases}
+\end{align*}
+where $\epsilon_t \sim \mathcal{N}(0,\sigma_a^2)$, $\eta_R \sim \mathcal{N}(1, \sigma_s^2)$, $\eta_L \sim \mathcal{N}(1, \sigma_s^2)$ and 
+\begin{align*}
+c_t &= \left[ \frac{\tau_\varphi - 1}{\tau_\varphi} + (\varphi - 1) (\delta_{t,t_R} + \delta_{t,t_L}) \right] c_{t-1} + \frac{1}{\tau_\varphi}.
+\end{align*}
+The boundary $B$ acts in the same mechanism as the boundary in the DDM. The initial value $x_0$ comes from a zero-mean normal distribution with variance $\sigma_i^2$.
+
+We can write the dynamics in the accumulation state (before boundary) with a coupled LDS
+\begin{align*}
+x_0 & \sim \mathcal{N}(0, \sigma_i^2) \\
+x_t & \sim \mathcal{N} \bigg((1 + \lambda) \, x_{t-1} + ( \delta_{t,t_R} -  \delta_{t,t_L} ) c_t , \, \sigma_a^2 + (\delta_{t,t_R}^2 + \delta_{t,t_L}^2)\,  c_t^2 \, \sigma_s^2 \bigg)\\
+c_t & \sim \mathcal{N} \bigg(\left[ \frac{\tau_\varphi - 1}{\tau_\varphi} + (\varphi - 1) (\delta_{t,t_R} + \delta_{t,t_L}) \right] c_{t-1} + \frac{1}{\tau_\varphi}, \, \sigma_c^2 \bigg).
+\end{align*}
+We recover the model in \cite{brunton2013rats} with $\sigma_c^2 \rightarrow 0$. Though we note it may not be necessary to write this as a coupled LDS, since the entire trajectory of $c_t$ throughout a trial is known when conditioned on the input and parameters. 
+
+DePasquale et al., Cosyne 2019.
+
+\subsection{Multi-dimensional accumulator models}
+We can accumulate information in $D$-dimensions with a $D$-dimensional latent state
+\be
+x_t = A_{z_t} x_{t-1} + V_{z_t} u_t + \epsilon_t.
+\ee
+A specific example of this is where in the accumulation state both $A_{z_t}$ and $V_{z_t}$ are identity matrices and $u_t$ is a $D$-dimensional vector with the input evidence for each dimension. 
+
+Allows for potentially more flexible transitions to decision states. Is the transition dependence a function of the difference between the 2 accumulator dimensions? Or a more general linear combination of the 2 accumulation dimensions? 
+
+\subsection{Switching between accumulation and non-accumulation states}
+
+
+\subsection{Competing accumulator model, random onset and offset of accumulation}
+Competing accumulators: this is a direct extension e.g. of a 2D accumulator. The important aspect of this model is that the observations may depend on only one of the latents (the corresponding preference) but the state transitions depend on both latent dimensions. For example, for one population of neurons with the same target preference, the mapping to observations could depend on only one of the accumulator while the state transitions may depend on both accumulators (whether either accumulator has hit a bound). 
+
+Jake's data would be a cool test case of this!
+
+\subsection{Sequential accumulation models}
+
+\subsection{Reset accumulator model (fitting across trials)}
+
+\subsection{Gain modulation (exponential nonlinearity)}
+
+\subsection{Stepping vs. ramping models}
+Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
+
+\subsection{Comments}
+\begin{itemize}
+\item Models assume that 1) always start accumulation in a certain state / place. 2) accumulation dynamics are constant throughout a trial. We can be more flexible than this. 
+\item Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
+\item How to fit time lag between input and neural activity? 
+\item Include other, generic dimensions 
+\item How to include the assumption that it is likely that not all neurons will represent evidence in the same way? 
+\item Ideas: fit to behavioral correlates of decision, potentially continuous throughout the trial. Could be nonlinear mappings from latent dynamics to behavioral measurements. 
+\item The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. 
+\item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
+\item Goals: use variational inference or generic optimization to make these easy to fit. Problem with VI is model comparison based on ELBO, but this is a nice open area of research to work on. Also, given the fit parameters we can both attempt to do 1) marginal likelihood quantification or 2) held-out log-likelihood quantification. 
+\item Questions: why not STAN, Edward, or another probabilistic programming language? 
+\end{itemize}
+
+\subsubsection*{Acknowledgments}
+
+%Use unnumbered third level headings for the acknowledgments. All acknowledgments
+%go at the end of the paper. Do not include acknowledgments in the anonymized
+%submission, only in the final paper.
+
+\section*{References}
+
+%References follow the acknowledgments. Use unnumbered first-level heading for
+%the references. Any choice of citation style is acceptable as long as you are
+%consistent. It is permissible to reduce the font size to \verb+small+ (9 point)
+%when listing the references. {\bf Remember that you can use more than eight
+%  pages as long as the additional pages contain \emph{only} cited references.}
+\medskip
+
+\small
+\bibliographystyle{plain}
+%\bibliographystyle{apalike}
+\bibliography{dzbib.bib}
+
+\end{document}
