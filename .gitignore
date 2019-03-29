@@ -1,0 +1,25 @@
+# OS generated files 
+.DS_Store
+.DS_Store?
+._*
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Compiled latex 
+*.aux
+*.log
+*.gz
+*.blg
+*.bbl
+*.bak
+*.rel
+*.pdfsync
+*.out
+
+# Exclude pdf versions of text files 
+ssm-dm.pdf
+
+# Exclude SVG figures (only pdfs are used in paper) 
+*.svg
