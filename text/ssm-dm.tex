@@ -2,20 +2,20 @@
 
 % if you need to pass options to natbib, use, e.g.:
 %     \PassOptionsToPackage{numbers, compress}{natbib}
-% before loading neurips_2018
+% before loading neurips_2019
 
 % ready for submission
 % \usepackage{neurips_2018}
 
 % to compile a preprint version, e.g., for submission to arXiv, add add the
 % [preprint] option:
-     \usepackage[preprint]{neurips_2018}
+     \usepackage[preprint]{neurips_2019}
 
 % to compile a camera-ready version, add the [final] option, e.g.:
-  %   \usepackage[final]{neurips_2018}
+  %   \usepackage[final]{neurips_2019}
 
 % to avoid loading the natbib package, add option nonatbib:
-%     \usepackage[nonatbib]{neurips_2018}
+%     \usepackage[nonatbib]{neurips_2019}
 
 \usepackage[utf8]{inputenc} % allow utf-8 input
 \usepackage[T1]{fontenc}    % use 8-bit T1 fonts
@@ -147,7 +147,11 @@ z_t &\sim p(x_{t-1}) \\
 x_t &= x_{t-1} + V_{z_t}^\top u_t + \epsilon_t.
 \end{align*}
 
-We note that we can describe accumulation without a bound simply using an LDS. 
+\subsubsection{Learning mapping from inputs to latents}
+Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
+
+\subsubsection{Accumulation without bound}
+We note that we can describe accumulation without a bound simply using a constrained LDS. 
 
 \subsection{1D Accumulator model}
 time-varying input, leaky / impulsive dynamics 
@@ -206,7 +210,10 @@ Jake's data would be a cool test case of this!
 \subsection{Stepping vs. ramping models}
 Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
 
-\subsection{Comments}
+\subsection{Including accumulation dimensions in more general models}
+
+
+\subsection{Misc comments and thoughts}
 \begin{itemize}
 \item Models assume that 1) always start accumulation in a certain state / place. 2) accumulation dynamics are constant throughout a trial. We can be more flexible than this. 
 \item Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
@@ -218,6 +225,11 @@ Have two-dimensions. One is an accumulation to bound process, while the other ha
 \item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
 \item Goals: use variational inference or generic optimization to make these easy to fit. Problem with VI is model comparison based on ELBO, but this is a nice open area of research to work on. Also, given the fit parameters we can both attempt to do 1) marginal likelihood quantification or 2) held-out log-likelihood quantification. 
 \item Questions: why not STAN, Edward, or another probabilistic programming language? 
+\item Datasets to apply to: I already have Meister LIP data, Yates LIP data. Next, Brody datasets (Poisson clicks, multi-unit..?). Accumulating Towers. 
+\item Incorporate GLM observations on top of latents? 
+\item Learn decision-boundaries?
+\item idea.. discrete states represent context, in context-based decision tasks? 
+\item how hard to incorporate Elad Ganmor observation model? Autoregressive with marginalization over possible spikes y. 
 \end{itemize}
 
 \subsubsection*{Acknowledgments}
