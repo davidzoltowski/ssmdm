@@ -1,2 +1,2 @@
-# ssm-dm
+# ssmdm
 State-space models for decision-making
