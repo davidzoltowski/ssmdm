@@ -4,6 +4,9 @@
 ._*
 *~
 
+*.egg-info/
+__pycache__/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
