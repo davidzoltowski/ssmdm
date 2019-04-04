@@ -242,7 +242,7 @@ class Accumulator2DTransitions(RecurrentOnlyTransitions):
     def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
         pass
     
-def Accumulator2D(D=2, M=2, betas=np.ones(2,), sigmas=np.array([[1e-5], [1e-3], [1e-5]]), a_diag=np.ones((3,2,1))):
+def Accumulator2D(D=2, M=2, betas=np.ones(2,), sigmas=np.array([[2e-4,1e-4],[3e-4,5e-4],[1e-4,2e-4]]), a_diag=np.ones((3,2,1))):
     K, D, M = 3, 2, 2
     
     # Build the initial state distribution, the transitions, and the observations
