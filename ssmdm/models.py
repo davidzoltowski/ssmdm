@@ -10,7 +10,7 @@ from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
 Observed DDM
 """
 class DDMObservations(AutoRegressiveDiagonalNoiseObservations):
-    def __init__(self, K, D, M=1, lags=1, beta=1.0, sigmas=1e-3 * np.ones((3, 1))):
+    def __init__(self, K, D=1, M=1, lags=1, beta=1.0, sigmas=1e-3 * np.ones((3, 1))):
         assert K == 3
         assert D == 1
         assert M == 1
@@ -43,11 +43,11 @@ class DDMObservations(AutoRegressiveDiagonalNoiseObservations):
         mask = np.reshape(np.array([0, 1, 0]), (3, 1, 1))
         self.Vs = mask * self.beta
         
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
-        _Observations.m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs)
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        _Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
         
 
 # Do the same for the transition model
@@ -71,14 +71,14 @@ class DDMTransitions(RecurrentOnlyTransitions):
     def params(self, value):
         pass
     
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
     
-    def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
 
 
-def DDM(beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]])):
+def DDM(D=1, M=1, beta=1.0, sigmas=np.array([[1e-4], [1e-4], [1e-4]])):
     K, D, M = 3, 1, 1
     
     # Build the initial state distribution, the transitions, and the observations
@@ -107,9 +107,9 @@ class DDMGaussianEmissions(GaussianEmissions):
     def params(self, value):
         self._Cs, self.ds, self.inv_etas = value
 
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
-        pca = self._initialize_with_pca(datas, inputs=inputs, masks=masks, tags=tags, covariances=None)
+        pca = self._initialize_with_pca(datas, inputs=inputs, masks=masks, tags=tags)
         self.inv_etas[:,...] = np.log(pca.noise_variance_)
         
 def LatentDDM(N, beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]])):
@@ -146,11 +146,11 @@ class AccumulatorObservations(DDMObservations):
         mask = np.reshape(np.array([0, 1, 0]), (3, 1, 1))
         self.Vs = mask * self.beta
 
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
-        _Observations.m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs)
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        _Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
 
     
 def Accumulator(beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]]), As=np.ones((3, 1, 1))):
@@ -209,11 +209,11 @@ class Accumulator2DObservations(AutoRegressiveDiagonalNoiseObservations):
         a_mask = np.array([np.eye(D), np.eye(D), np.eye(D)])
         self._As = self._a_diag*a_mask       
         
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
-        _Observations.m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs)
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        _Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
     
 
 # Transition model
@@ -236,13 +236,14 @@ class Accumulator2DTransitions(RecurrentOnlyTransitions):
     def params(self, value):
         pass
     
-    def initialize(self, datas, inputs=None, masks=None, tags=None, covariances=None):
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
     
-    def m_step(self, expectations, datas, inputs, masks, tags, covariances, **kwargs):
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
-    
-def Accumulator2D(D=2, M=2, betas=np.ones(2,), sigmas=np.array([[2e-4,1e-4],[3e-4,5e-4],[1e-4,2e-4]]), a_diag=np.ones((3,2,1))):
+
+#def Accumulator2D(D=2, M=2, betas=np.ones(2,), sigmas=np.array([[2e-4,1e-4],[3e-4,5e-4],[1e-4,2e-4]]), a_diag=np.ones((3,2,1))):
+def Accumulator2D(D=2, M=2, betas=np.ones(2,), sigmas=1e-3 * np.ones((3, 2)), a_diag=np.ones((3,2,1))):
     K, D, M = 3, 2, 2
     
     # Build the initial state distribution, the transitions, and the observations
