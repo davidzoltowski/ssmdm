@@ -78,32 +78,36 @@
 \maketitle
 
 \begin{abstract}
-Here we write how decision-making models can be instantiated as constrained state-space models. 
+Here we write how decision-making models can be instantiated as constrained state space models. 
 \end{abstract}
 
-\section{Decision-making models as constrained rSLDS}
+%\section{Introduction}
+
+\section{Decision-making models as constrained recurrent state space models}
 
 The models under consideration will in general have the following variables: a $D$-dimensional continuous latent state $x_t \in \mathbb{R}^D$, a set of $K$ discrete latent states $z_t \in \{ 1, 2, ... K \}$, $M$-dimensional inputs $u_t \in \mathbb{R}^M$, and $N$-dimensional observations $y_t \in \mathbb{R}^N$. 
 
 \subsection{rSLDS}
-In general, in an rSLDS the discrete state at time $t+1$ depends on the discrete and continuous states at time $t$ and the current input at time $t+1$. We define rSLDS following the treatment in \cite{linderman2017bayesian}.
+In general, in an rSLDS the discrete state at time $t+1$ depends on the discrete and continuous states at time $t$ and the current input at time $t+1$. We define the rSLDS following the treatment in \cite{linderman2017bayesian}.
 
-The transition probabilities are given by 
+The continuous latent state $x_t$ follows linear-Gaussian dynamics that depend on the discrete state $z_t$
+\be
+x_{t} = A_{z_t} x_{t-1} + V_{z_t} u_t + b_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, Q_{z_t})
+\ee
+where $A_{z_t}, Q_{z_t} \in \mathbb{R}^{D \times D}$, $V_{z_t} \in \mathbb{R}^{D \times M}$, and $b_{z_t} \in \mathbb{R}^D$ for each $z_t$. 
+
+The transition probabilities are given by \textbf{(note right hand side is a vector)}
 \be
 \log p(z_{t+1} | z_t, x_t, u_{t+1}, R_{z_t}, W_{z_t}, r_{z_t}) \propto R_{z_t} x_t + r_{z_t} + W_{z_t} u_{t+1}
 \ee
-where the dependence on the continuous state is controlled by $R_{z_t}$, the dependence on the input is controlled by $W_{z_t}$, and $r_{z_t}$ is a bias that captures dependencies in the discrete states. 
+where the dependence on the continuous state is controlled by $R_{z_t} \in \mathbb{R}^{K \times D}$, the dependence on the input is controlled by $W_{z_t} \in \mathbb{R}^{K \times M}$, and $r_{z_t} \in \mathbb{R}^M$ is a bias that captures dependencies in the discrete states. 
 
-The continuous latent dynamics in each state are linear-Gaussian
-\be
-x_{t} = A_{z_t} x_{t-1} + V_{z_t} u_t + b_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, Q_{z_t}).
-\ee
 
 In an rSLDS, the observations are linear mappings from the continuous latent states 
 \be
 y_t = C_{z_t} x_t + d_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, S_{z_t}). 
 \ee
-However, we will also investigate more general emission distributions
+However, in general we consider emissions of the form
 \be
 y_t \sim \mathcal{P}( f( C_{z_t} x_t + d_{z_t} ) ). 
 \ee
@@ -121,13 +125,14 @@ x_0 \sim \mathcal{N}(\mu_0, \sigma^2_0).
 \ee
 
 
-We can write this as an rSLDS as follows. The state is a one dimensional variable $x_t \in \mathbb{R}$. There is a discrete state $z_t \in \{\mathsf{ramp}, \mathsf{left bound}, \mathsf{right bound}\}$ that indicates whether the continuous state has reached its threshold (bound). Let $u_t \in \mathbb{R}$ be the input, which specifies the amount of evidence to the left or right choice, which governs the dynamics of $x_t$. 
+We can write this as an rSLDS as follows. The continuous state is a one dimensional variable $x_t \in \mathbb{R}$. There is a discrete state $z_t \in \{\mathsf{ramp}, \mathsf{left bound}, \mathsf{right bound}\}$ that indicates whether the continuous state has reached its threshold (bound). Let $u_t \in \mathbb{R}$ be the input, which specifies the amount of evidence to the left or right choice and which governs the dynamics of $x_t$. 
 
 The model is :
-\begin{align*}
+\begin{align}
 z_t &\sim p(x_{t-1}) \\
 x_t &= x_{t-1} + V_{z_t} u_t + \epsilon_t 
-\end{align*}
+\label{eqn:ddm_dynamics}
+\end{align}
 where $\epsilon_t \sim \mathcal{N}(0, \sigma^2)$ and the input weights are constrained such that
 \begin{align*}
 V_{\mathsf{ramp}} &= \beta, \\
@@ -141,11 +146,19 @@ The discrete transition probabilities are,
 \end{align*}
 
 \subsubsection{Alternative parameterization of DDM with discrete input levels}
-Here we consider the DDM for random dot motion (RDM). In RDM tasks, we typically have discrete input levels, and it is useful to consider learning a parameter $V_{z_t}$ for each input level. Let us say we have $C$ coherence levels. We can then parameterize with a one-hot input encoding the coherence level, such that $u_t \in \mathbb{R}^C$. Then, we can learn a $C$ dimensional vector of parameters $V_{z_t}$. The dynamics model in this case would be
-\begin{align*}
-z_t &\sim p(x_{t-1}) \\
-x_t &= x_{t-1} + V_{z_t}^\top u_t + \epsilon_t.
-\end{align*}
+In some cases we may have a discrete set of input levels and we may want to learn the mapping from the input category to dynamics. For example, in the random dot motion (RDM) task, the discrete input levels are the different motion coherences and we may want to learn a different drift term for each coherence. 
+
+We can accomplish this by parameterizing $u_t$ as a one-hot vector encoding the stimulus category. If we have $C$ categories, then $u_t$ has $C$ dimensions and $V_{z_t} \in \mathbb{R}^{D \times C}$. We can then learn the elements of $V_{z_t}$, which when $D = 1$ correspond to the drifts for each stimulus category. 
+
+ The dynamics under this parameterization remain the same as in equation~(\ref{eqn:ddm_dynamics}). 
+%\begin{align*}
+%z_t &\sim p(x_{t-1}) \\
+%x_t &= x_{t-1} + V_{z_t}  u_t + \epsilon_t.
+%\end{align*}
+
+
+%\section{Models that fall in this framework}
+
 
 \subsubsection{Learning mapping from inputs to latents}
 Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
@@ -224,7 +237,6 @@ Have two-dimensions. One is an accumulation to bound process, while the other ha
 \item The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. 
 \item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
 \item Goals: use variational inference or generic optimization to make these easy to fit. Problem with VI is model comparison based on ELBO, but this is a nice open area of research to work on. Also, given the fit parameters we can both attempt to do 1) marginal likelihood quantification or 2) held-out log-likelihood quantification. 
-\item Questions: why not STAN, Edward, or another probabilistic programming language? 
 \item Datasets to apply to: I already have Meister LIP data, Yates LIP data. Next, Brody datasets (Poisson clicks, multi-unit..?). Accumulating Towers. 
 \item Incorporate GLM observations on top of latents? 
 \item Learn decision-boundaries?
