@@ -219,12 +219,19 @@ Jake's data would be a cool test case of this!
 \subsection{Reset accumulator model (fitting across trials)}
 
 \subsection{Gain modulation (exponential nonlinearity)}
+Let $x_t$ be the continuous state in an accumulation model described above. For models with Poisson observations, we can incorporate gain modulation \cite{goris2017dissociation} with
+\begin{align}
+g_0 & \sim \mathcal{N}(\mu_g, \sigma_g^2) \\
+g_t | g_{t-1} & \sim \mathcal{N}(g_{t-1}, \sigma_g^2) \\
+y_t | x_t, g_t & \sim \mathrm{Poisson}(\exp(C x_t + \mathrm{1} g_t))
+\end{align}
+were $\mathrm{1}$ is a $N$-dimensional (number of observations) vector of ones. 
 
 \subsection{Stepping vs. ramping models}
 Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
 
 \subsection{Including accumulation dimensions in more general models}
-
+``Accumulation dimensions'' can be a modular component for use in more general models. 
 
 \subsection{Misc comments and thoughts}
 \begin{itemize}
@@ -237,11 +244,19 @@ Have two-dimensions. One is an accumulation to bound process, while the other ha
 \item The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. 
 \item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
 \item Goals: use variational inference or generic optimization to make these easy to fit. Problem with VI is model comparison based on ELBO, but this is a nice open area of research to work on. Also, given the fit parameters we can both attempt to do 1) marginal likelihood quantification or 2) held-out log-likelihood quantification. 
-\item Datasets to apply to: I already have Meister LIP data, Yates LIP data. Next, Brody datasets (Poisson clicks, multi-unit..?). Accumulating Towers. 
 \item Incorporate GLM observations on top of latents? 
 \item Learn decision-boundaries?
 \item idea.. discrete states represent context, in context-based decision tasks? 
 \item how hard to incorporate Elad Ganmor observation model? Autoregressive with marginalization over possible spikes y. 
+\end{itemize}
+
+\section{Related work}
+\begin{itemize}
+\item The DDM \cite{ratcliff2008diffusion,gold2007neural}
+\item Theory-constrained state space models \cite{inderman2017using}
+\item Proposal of thinking ``beyond trial-based paradigms'' with review of relevant literature \cite{huk2018beyond}. The authors in  \cite{huk2018beyond} propose to integrate continuous neural activity measurements with behavior. This work could be useful for analyzing decision-making or action selection correlates across trials.
+\item Example of Kalman filtering being used in ``continuous psychophysics" \cite{bonnen2015continuous}.
+\item Ramping and stepping models: 1-dimensional latent variable models of neural activity in decision-making \cite{latimer2015single}, \textbf{Zoltowski et al., 2019}. 
 \end{itemize}
 
 \subsubsection*{Acknowledgments}
