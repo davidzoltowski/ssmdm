@@ -30,6 +30,8 @@
 
 % import definitions
 \input{dzdefs.tex}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
 
 \title{}
 
@@ -124,7 +126,6 @@ where $\beta_c$ is the strength of the evidence and $\epsilon_t \sim \mathcal{N}
 x_0 \sim \mathcal{N}(\mu_0, \sigma^2_0). 
 \ee
 
-
 We can write this as an rSLDS as follows. The continuous state is a one dimensional variable $x_t \in \mathbb{R}$. There is a discrete state $z_t \in \{\mathsf{ramp}, \mathsf{left bound}, \mathsf{right bound}\}$ that indicates whether the continuous state has reached its threshold (bound). Let $u_t \in \mathbb{R}$ be the input, which specifies the amount of evidence to the left or right choice and which governs the dynamics of $x_t$. 
 
 The model is :
@@ -144,6 +145,7 @@ The discrete transition probabilities are,
 \log p(z_t = \textsf{ramp} \mid x_{t-1}) &\propto 0 \\
 \log p(z_t = \textsf{right bound} \mid x_{t-1}) &\propto -x_{t-1} - 1
 \end{align*}
+We note that we can describe accumulation without a bound simply using a constrained LDS. 
 
 \subsubsection{Alternative parameterization of DDM with discrete input levels}
 In some cases we may have a discrete set of input levels and we may want to learn the mapping from the input category to dynamics. For example, in the random dot motion (RDM) task, the discrete input levels are the different motion coherences and we may want to learn a different drift term for each coherence. 
@@ -151,27 +153,13 @@ In some cases we may have a discrete set of input levels and we may want to lear
 We can accomplish this by parameterizing $u_t$ as a one-hot vector encoding the stimulus category. If we have $C$ categories, then $u_t$ has $C$ dimensions and $V_{z_t} \in \mathbb{R}^{D \times C}$. We can then learn the elements of $V_{z_t}$, which when $D = 1$ correspond to the drifts for each stimulus category. 
 
  The dynamics under this parameterization remain the same as in equation~(\ref{eqn:ddm_dynamics}). 
-%\begin{align*}
-%z_t &\sim p(x_{t-1}) \\
-%x_t &= x_{t-1} + V_{z_t}  u_t + \epsilon_t.
-%\end{align*}
-
-
-%\section{Models that fall in this framework}
-
-
-\subsubsection{Learning mapping from inputs to latents}
-Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
-
-\subsubsection{Accumulation without bound}
-We note that we can describe accumulation without a bound simply using a constrained LDS. 
 
 \subsection{1D Accumulator model}
-time-varying input, leaky / impulsive dynamics 
+If we learn the dynamics parameter $A_{z_t}$ for the accumulation state, we can incorporate leaky ($A_{z_t} < 1$) or impulsive ($A_{z_t} > 1$) accumulation to bound. 
 
 \subsection{Brunton model}
-time-varying input plus time-varying variance (with parameters governing input and variance). coupled LDS?
-(the important aspects of this are sensory noise, sensory adaptation, and non-identity dynamics)
+
+TODO: Write adaptation dynamics without coupled LDS?
 
 The 1D accumulator model from \cite{brunton2013rats} has the form
 \begin{align*}
@@ -197,26 +185,91 @@ We recover the model in \cite{brunton2013rats} with $\sigma_c^2 \rightarrow 0$. 
 
 DePasquale et al., Cosyne 2019.
 
-\subsection{Multi-dimensional accumulator models}
-We can accumulate information in $D$-dimensions with a $D$-dimensional latent state
+\section{Multi-dimensional accumulator models}
+
+In many situations, it is natural to model behavior with more than two choices or more than one latent accumulation dimension. In the recurrent state space modeling framework, it is (likewise) natural to increase the dimensionality of the latent variables to accommodate these modeling desiderata. For example, we can simply increase the dimensionality of the latent continuous state to $D$-dimensions to model $D$ accumulators, where the dynamics remain described by
 \be
 x_t = A_{z_t} x_{t-1} + V_{z_t} u_t + \epsilon_t.
 \ee
 A specific example of this is where in the accumulation state both $A_{z_t}$ and $V_{z_t}$ are identity matrices and $u_t$ is a $D$-dimensional vector with the input evidence for each dimension. 
 
-Allows for potentially more flexible transitions to decision states. Is the transition dependence a function of the difference between the 2 accumulator dimensions? Or a more general linear combination of the 2 accumulation dimensions? 
+One can also adapt the number of discrete latent states and the parameterization of the transitions to the discrete latent states. 
 
-\subsection{Switching between accumulation and non-accumulation states}
+\subsection{Illustrative example: two accumulators with Poisson observations}
+For example, we may wish to model a task with a binary choice (say, left $L$ or right $R$) and two input streams which provide evidence supporting one of the choices. In the ``accumulation'' state we will model the latent continuous dynamics with
+\be
+\begin{bmatrix}
+x_R \\
+x_L
+\end{bmatrix}_{t}
+= 
+\begin{bmatrix}
+a_{11} & a_{12} \\
+a_{21} & a_{22} 
+\end{bmatrix}
+\begin{bmatrix}
+x_R \\
+x_L
+\end{bmatrix}_{t-1}
++
+\begin{bmatrix}
+v_{11} & 0 \\
+0 & v_{22} 
+\end{bmatrix}
+\begin{bmatrix}
+u_R \\
+u_L 
+\end{bmatrix}_{t-1}
++ \epsilon_t, 
+\quad 
+\epsilon_t \sim \mathcal{N} \bigg(0, \begin{bmatrix} q_{11} & q_{12} \\ q_{21} & q_{22} \end{bmatrix} \bigg).
+\ee
+If we set $a_{12} = a_{21} = 0$, then the dimensions of $x$ separately accumulate the two streams of inputs. The diagonal terms of the dynamics $a_{11}$ and $a_{22}$ allow for modeling of leaky or impulsive dynamics, which may be separate for the two evidence streams. The process noise could have the same or different marginal variances for each dimension and it could be either correlated or uncorrelated across the two dimensions. For simplicity, we will first consider a model with uncorrelated noise $q_{12} = q_{21} = 0$. 
 
+The latent dimensions map to observed neural activity via
+\be
+y_t | x_t \sim \mathrm{Poisson}(f(C x_t + d))
+\ee
+where $f()$ may be a softplus or exponential nonlinearity. One key property of this formalization is that now the observations can depend on any linear combination of the latent dimensions. For example, some neurons may weight heavily onto $x_R$, others onto $x_L$, and finally others onto $x_R - x_L$ (or $x_L - x_R$). This added flexibility could be useful for explaining and understanding neural activity, as one-dimensional accumulator models typically make the assumption that neural activity represents only a difference such as $x_R - x_L$. 
 
-\subsection{Competing accumulator model, random onset and offset of accumulation}
-Competing accumulators: this is a direct extension e.g. of a 2D accumulator. The important aspect of this model is that the observations may depend on only one of the latents (the corresponding preference) but the state transitions depend on both latent dimensions. For example, for one population of neurons with the same target preference, the mapping to observations could depend on only one of the accumulator while the state transitions may depend on both accumulators (whether either accumulator has hit a bound). 
+We consider here two options for the discrete states and discrete state transitions. In both cases, we will have three discrete states: the accumulation state and R and L decision states. The dynamics in the decision states are described with $A_{z_t} = I$ and $V_{z_t} = 0$. 
 
-Jake's data would be a cool test case of this!
+\subsubsection{Collapse to 1D decision states}
+With discrete transition probabilities 
+\begin{align*}
+\log p(z_t = \text{R} \mid x_{t-1}) &\propto \gamma (x_{R,t-1} - x_{L,t-1}) - \gamma \\
+\log p(z_t = \text{accum} \mid x_{t-1}) &\propto 0 \\
+\log p(z_t = \text{L} \mid x_{t-1}) &\propto \gamma (x_{L,t-1} - x_{R,t-1}) - \gamma 
+\end{align*}
+the transitions between discrete states collapses to the transitions in the 1D accumulator model (that is, it only depends on the difference of the accumulated input), where $\gamma$ is a scale parameter that controls the sharpness of the transition boundaries. 
 
-\subsection{Sequential accumulation models}
+\subsubsection{Race model}
+We could instantiate a race model of competing accumulators \cite{gold2007neural} with 
+\begin{align*}
+\log p(z_t = \text{R} \mid x_{t-1}) &\propto \gamma x_{R,t-1} - \gamma \\
+\log p(z_t = \text{accum} \mid x_{t-1}) &\propto 0 \\
+\log p(z_t = \text{L} \mid x_{t-1}) &\propto \gamma x_{L,t-1} - \gamma.
+\end{align*}
+If $\gamma$ is relatively large, then the most important factor in the transitions is which of $x_R$ or $x_L$ surpasses unity first.
 
-\subsection{Reset accumulator model (fitting across trials)}
+This model could also be useful for modeling the responses of a single population of neurons with a single input. Specifically, it allows for modeling an integration offset time that differs on each trial, even when the dimension representing the neural population is decreasing (see \cite{latimer2017no} and zoltowski 2019). In this case, both latent dimensions will depend on the single input except with different signs (e.g. $v_1 = - v_2$). The neural activity will only depend on one of the latent dimensions. The state transition structure could allow learning of random integration offset times on each trial (\textbf{try to fit this to simulations from the supplementary figures of the Neuron paper?}). 
+
+\subsubsection{Augmented input}
+We could learn a filtered mapping of the input by augmenting the input space. For example, we could set the input term in the dynamics to
+\be
+V 
+\begin{bmatrix}
+u_{r,t-1} \\ u_{l,t-1} \\ u_{r,t-2} \\ u_{r,t-2} \\ u_{r,t-3} \\ u_{l,t-3} 
+\end{bmatrix}.
+\ee
+The inferred matrix $V$ could zero out the most recent inputs and learn a time delay between neural activity and input dynamics. Expanding on this direction and learning a more complicated filtering of the inputs is an interesting direction of work. 
+
+\section{Accumulation dimensions: a modular component embedded in models}
+The 1D models of choice may be impoverished for fitting neural activity. For example, neural activity may fluctuate slowly across trials, and it may show non-monotonic trends that are not captured by the accumulation to bound hypothesis. In this framework, it is natural to include additional dimensions for explaining neural activity. 
+
+\subsection{Accumulation-to-bound embedded in a dynamical system, possibly followed by additional dynamics}
+We may be interested in models where after the accumulation-to-bound process, neural activity undergoes additional dynamics subject to working memory or movements. 
+- dimensions that are zero throughout initial trial, then kick-in afterwards?
 
 \subsection{Gain modulation (exponential nonlinearity)}
 Let $x_t$ be the continuous state in an accumulation model described above. For models with Poisson observations, we can incorporate gain modulation \cite{goris2017dissociation} with
@@ -225,35 +278,57 @@ g_0 & \sim \mathcal{N}(\mu_g, \sigma_g^2) \\
 g_t | g_{t-1} & \sim \mathcal{N}(g_{t-1}, \sigma_g^2) \\
 y_t | x_t, g_t & \sim \mathrm{Poisson}(\exp(C x_t + \mathrm{1} g_t))
 \end{align}
-were $\mathrm{1}$ is a $N$-dimensional (number of observations) vector of ones. 
+were $\mathrm{1}$ is a $N$-dimensional (number of observations) vector of ones such that the gain variable $g$ represents global fluctuations.  
 
-\subsection{Stepping vs. ramping models}
-Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
 
-\subsection{Including accumulation dimensions in more general models}
-``Accumulation dimensions'' can be a modular component for use in more general models. 
+\section{More than just accumulation and boundary states}
+We could model 1) switches between accumulating and not-accumulating within a trial and 2) a random integration onset time in which integration does not necessarily start at the beginning of every analysis period. 
 
-\subsection{Misc comments and thoughts}
-\begin{itemize}
-\item Models assume that 1) always start accumulation in a certain state / place. 2) accumulation dynamics are constant throughout a trial. We can be more flexible than this. 
-\item Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
-\item How to fit time lag between input and neural activity? 
-\item Include other, generic dimensions 
-\item How to include the assumption that it is likely that not all neurons will represent evidence in the same way? 
-\item Ideas: fit to behavioral correlates of decision, potentially continuous throughout the trial. Could be nonlinear mappings from latent dynamics to behavioral measurements. 
-\item The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. 
+\section{Beyond single-trials or single-choices \cite{huk2018beyond}}
+Models assume independent trials. We can be more flexible than this. 
+
+Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
+The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. ?
+
+\subsection{Sequential choice models (sequential accumulation models}
+
+\subsection{Reset accumulator model}
+We add an additional reset state. In the reset state, the continuous latent variable is independent of the previous latent variable
+\be
+x_t \sim \mathcal{N}(0 x_{t-1} + \mu_0, Q_0).
+\ee
+The transition probabilities could be setup such that the model transitions to the reset state after making a choice. 
+
+\section{Models of choice and behavior only}
+
+Model reaction-time, action-selection, and more? 
+\begin{enumerate}
 \item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
-\item Goals: use variational inference or generic optimization to make these easy to fit. Problem with VI is model comparison based on ELBO, but this is a nice open area of research to work on. Also, given the fit parameters we can both attempt to do 1) marginal likelihood quantification or 2) held-out log-likelihood quantification. 
+\item Ideas: fit to behavioral correlates of decision, potentially continuous throughout the trial. Could be nonlinear mappings from latent dynamics to behavioral measurements.
+\end{enumerate}
+
+\section{Other modeling extensions}
+\begin{itemize}
+\item Learning mapping from inputs to latents (e.g. what time-lag?). Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
+\item Stepping vs. ramping models.Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
 \item Incorporate GLM observations on top of latents? 
-\item Learn decision-boundaries?
-\item idea.. discrete states represent context, in context-based decision tasks? 
-\item how hard to incorporate Elad Ganmor observation model? Autoregressive with marginalization over possible spikes y. 
 \end{itemize}
+
+\section{Inference}
+
+\subsection{Variational Inference}
+
+\subsection{Initialization}
+Given observations $y$, use factor analysis to compute $y \approx C \hat{x} + \mu$. Then find an affine transformation of $\hat{x}$ that maximizes the prior probability of the transformed $\hat{x}$ under the model 
+\be
+\hat{R}, \hat{r} = \argmax_{ R, r } \log p(x = R \hat{x} + r | \theta_\text{AR-HMM}) .
+\ee
+Use $\hat{R}$ and $\hat{r}$ to transform $C$, $\hat{x}$, and $\mu$.
 
 \section{Related work}
 \begin{itemize}
 \item The DDM \cite{ratcliff2008diffusion,gold2007neural}
-\item Theory-constrained state space models \cite{inderman2017using}
+\item Theory-constrained state space models \cite{linderman2017using}
 \item Proposal of thinking ``beyond trial-based paradigms'' with review of relevant literature \cite{huk2018beyond}. The authors in  \cite{huk2018beyond} propose to integrate continuous neural activity measurements with behavior. This work could be useful for analyzing decision-making or action selection correlates across trials.
 \item Example of Kalman filtering being used in ``continuous psychophysics" \cite{bonnen2015continuous}.
 \item Ramping and stepping models: 1-dimensional latent variable models of neural activity in decision-making \cite{latimer2015single}, \textbf{Zoltowski et al., 2019}. 

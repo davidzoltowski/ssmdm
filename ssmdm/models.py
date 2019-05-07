@@ -3,8 +3,19 @@ import autograd.numpy.random as npr
 from ssm.core import BaseHMM, BaseSwitchingLDS
 from ssm.init_state_distns import InitialStateDistribution
 from ssm.transitions import _Transitions, RecurrentOnlyTransitions
-from ssm.observations import _Observations, AutoRegressiveDiagonalNoiseObservations
+from ssm.observations import _Observations, AutoRegressiveDiagonalNoiseObservations, _AutoRegressiveObservationsBase
 from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
+
+# preprocessing
+from ssm.preprocessing import factor_analysis_with_imputation
+from tqdm.auto import trange
+
+# for initialization
+from ssm.optimizers import adam_step, rmsprop_step, sgd_step, convex_combination
+from autograd.scipy.misc import logsumexp
+from autograd.tracer import getval
+from autograd.misc import flatten
+from autograd import value_and_grad
 
 """
 Observed DDM
@@ -52,7 +63,7 @@ class DDMObservations(AutoRegressiveDiagonalNoiseObservations):
 
 # Do the same for the transition model
 class DDMTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=100):
+    def __init__(self, K, D, M=0, scale=500):
         assert K == 3
         assert D == 1
         assert M == 1
@@ -107,10 +118,43 @@ class DDMGaussianEmissions(GaussianEmissions):
     def params(self, value):
         self._Cs, self.ds, self.inv_etas = value
 
-    def initialize(self, datas, inputs=None, masks=None, tags=None):
-        datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
-        pca = self._initialize_with_pca(datas, inputs=inputs, masks=masks, tags=tags)
-        self.inv_etas[:,...] = np.log(pca.noise_variance_)
+    def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=50, num_tr_iters=50):
+        print("Initializing...")
+        print("First with FA using {} steps of EM.".format(num_em_iters))
+        fa, xhats, Cov_xhats, lls = factor_analysis_with_imputation(self.D, datas, masks=masks, num_iters=num_em_iters)
+        
+        # define objective
+        def _objective(params, itr):
+            Td = sum([x.shape[0] for x in xhats])
+            new_datas = [np.dot(x,params[0].T)+params[1] for x in xhats]
+            obj = DDM().log_likelihood(new_datas,inputs=inputs)
+            return -obj / Td
+        
+        # initialize R and r
+        R = 0.5*np.random.randn(self.D,self.D)
+        r = 0.0
+        params = [R,r]
+        Td = sum([x.shape[0] for x in xhats])
+        
+        print("Next by transforming latents to match DDM prior using {} steps of max log likelihood.".format(num_tr_iters))
+
+        state = None
+        lls = [-_objective(params, 0) * Td]
+        pbar = trange(num_tr_iters)
+        pbar.set_description("Epoch {} Itr {} LP: {:.1f}".format(0, 0, lls[-1]))
+
+        for itr in pbar:
+            params, val, g, state = sgd_step(value_and_grad(_objective), params, itr, state)
+            lls.append(-val * Td)
+            pbar.set_description("LP: {:.1f}".format(lls[-1]))
+            pbar.update(1)
+    
+        R = params[0]
+        r = params[1]
+        
+        self.Cs = (fa.W @ np.linalg.inv(R)).reshape([1,self.N,self.D])
+        self.ds = fa.mean - np.squeeze(fa.W @ np.linalg.inv(R) * r)
+        self.inv_etas = np.log(fa.sigmasq)
         
 def LatentDDM(N, beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]])):
     K, D, M = 3, 1, 1
@@ -129,6 +173,130 @@ def LatentDDM(N, beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]])):
 """
 1D Accumulator
 """
+class _AccumulatorObservationsBase(_AutoRegressiveObservationsBase):
+    """
+    This class specifies the mean of general accumulator observations. It has three discrete states and can
+    handle arbitrary continuous and input dimensions. It does not specify the covariances.
+    """
+    def __init__(self, K, D, M, lags=1):
+        assert K == 3
+        super(_AccumulatorObservationsBase, self).__init__(K, D, M)
+        
+        # the parameters are the input weights - one input weight for each dimension of the input
+        self._betas = np.ones(M)
+        
+        # Initialize input weights to zero, besides the diagonal in accumulation state
+        self.Vs[0] *= np.zeros((D,M))            # left bound
+        self.Vs[1] = self._betas*np.eye(D,M)       # ramp
+        self.Vs[2] *= np.zeros((D,M))  
+        
+        # learn diagonal autoregressive dynamics for each state 
+        # a_diag are parameters of the diagonal for each state
+        self._a_diag = np.ones(K,D,1)
+        mask = np.array([np.eye(D), np.eye(D), np.eye(D)])
+        self._As = self.a_diag * mask
+        
+        # fix the remaining values
+        self.bs = np.zeros((K, D))
+        self.mu_init = np.zeros((K, D))
+
+    @property
+    def params(self):
+        return self._betas, self._a_diag
+        
+    @params.setter
+    def params(self, value):
+        self._betas, self._a_diag = value
+        
+        # set V
+        v_mask = np.array([np.zeros((D,M)), np.eye(D,M), np.zeros((D,M))])
+        self.Vs = mask * self._betas
+        
+        # set A
+        a_mask = np.array([np.eye(D), np.eye(D), np.eye(D)])
+        self._As = self._a_diag * a_mask
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        _Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
+        
+class AccumulatorDiagonalInputNoiseObservations(_AccumulatorObservationsBase):
+    def __init__(self, K, D, M):
+        assert K == 3
+        super(AccumulatorDiagonalInputNoiseObservations, self).__init__(K, D, M)
+        
+        # initialize initial state covariance
+        self._log_sigmasq_init = np.zeros((K, D))
+
+        # have two diagonal noise covariances, one without input and one with input
+        self._log_sigmasq = np.zeros((2, K, D))
+        
+    
+    # sigma init 
+    @property
+    def sigmasq_init(self):
+        return np.exp(self._log_sigmasq_init)
+
+    @sigmasq_init.setter
+    def sigmasq_init(self, value):
+        assert value.shape == (self.K, self.D)
+        assert np.all(value > 0)
+        self._log_sigmasq_init = np.log(value)
+        
+    @property
+    def Sigmas_init(self):
+        return np.array([np.diag(np.exp(log_s)) for log_s in self._log_sigmasq_init])
+    
+    @property
+    def sigmasq(self):
+        return np.exp(self._log_sigmasq)
+    
+    # sigma
+    @sigmasq.setter
+    def sigmasq(self, value):
+        assert value.shape == (2, self.K, self.D)
+        assert np.all(value > 0)
+        self._log_sigmasq = np.log(value)
+        
+    @property
+    def Sigmas(self):
+        return np.array([ [np.diag(np.exp(log_s)) for log_s in log_sigs] for log_sigs in log_sigmasq])
+
+    @Sigmas.setter
+    def Sigmas(self, value):
+        assert value.shape == (2, self.K, self.D, self.D)
+        sigmasq = np.array([ [np.diag(S) for S in Sigs] for Sigs in value])
+        assert np.all(sigmasq > 0)
+        self._log_sigmasq = np.log(sigmasq)
+        
+    @property
+    def params(self):
+        return super(AccumulatorDiagonalInputNoiseObservations, self).params + (self._log_sigmasq,)
+
+    @params.setter
+    def params(self, value):
+        self._log_sigmasq = value[-1]
+        super(AccumulatorDiagonalInputNoiseObservations, self.__class__).params.fset(self, value[:-1])
+    
+    def permute(self, perm):
+        super(AccumulatorDiagonalInputNoiseObservations, self).permute(perm)
+        self._log_sigmasq_init = self._log_sigmasq_init[perm]
+        self._log_sigmasq = self._log_sigmasq[perm]
+        
+    # def initialize(self, datas, inputs=None, masks=None, tags=None, localize=True):
+    # take into account the two different covariances
+    
+    # def log_likelihoods(self, data, input, mask, tag=None):
+    # also compute log-likelihood given sigma, depending on input 
+
+    # def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+    # change sigmas to get the correct sigma, depending on input 
+    
+    # def sample_x(self, z, xhist, input=None, tag=None, with_noise=True):
+    
+    
 class AccumulatorObservations(DDMObservations):
     def __init__(self, K, D, M=1, lags=1, beta=1.0, sigmas=1e-3 * np.ones((3, 1)), As=np.ones((3,1,1))):
         super(AccumulatorObservations, self).__init__(K, D, M, beta=beta, sigmas=sigmas)
@@ -151,7 +319,6 @@ class AccumulatorObservations(DDMObservations):
 
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         _Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
-
     
 def Accumulator(beta=1.0, sigmas=np.array([[1e-5], [1e-3], [1e-5]]), As=np.ones((3, 1, 1))):
     K, D, M = 3, 1, 1
