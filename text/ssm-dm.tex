@@ -33,7 +33,7 @@
 \DeclareMathOperator*{\argmax}{arg\,max}
 \DeclareMathOperator*{\argmin}{arg\,min}
 
-\title{}
+\title{A recurrent state space framework for unifying and generalizing models of decision making dynamics}
 
 % The \author macro works with any number of authors. There are two commands
 % used to separate the names and addresses of multiple authors: \And and \AND.
@@ -80,12 +80,29 @@
 \maketitle
 
 \begin{abstract}
-Here we write how decision-making models can be instantiated as constrained state space models. 
+%Here we show how classical models of human and animal behavior and neural activity during decision-making can be instantiated as constrained recurrent state-space models. This allows for interesting generalizations of these models. 
+Accumulation of evidence towards a threshold is common feature in models of latent dynamics underlying neural activity and behavior during decision-making. However, the most commonly applied models are restricted to one-dimensional latent dynamics, which are often impoverished both as models of neural activity and of complex behavior. Here we show how accumulation-to-bound models of neural activity can be instantiated as constrained recurrent switching state-space models. In this framework, we then generalize the models to have higher-dimensional latent dynamics and more flexible boundary states and switching criteria. We also introduce the notion of accumulation dimensions as a modular component of state-space models during decision-making. We apply our models to neural recordings from monkey parietal cortices during two different decision-making tasks. 
 \end{abstract}
 
-%\section{Introduction}
+\section{Introduction}
 
-\section{Decision-making models as constrained recurrent state space models}
+\begin{enumerate}
+\item Decision-making dynamics, the dynamics of making a choice
+\item Accumulation of evidence models are commonly used to model decision-making dynamics and neural activity
+\item However, there are a few things to be desired.
+\item Classical models such as the DDM only have 1D latent dynamics and are for tasks with two choices. 
+\item the 1D models are often impoverished for explaining neural activity (gain-modulation, non-monotonicity, etc)
+\item DDM like models (and ramping models, etc.) often assume IID decision-making trials. We would like to move beyond this (could be future work).
+\item Our work overcomes (some?) of these difficulties 
+\item We connect the classical DDM (with observations) to a recurrent state-space model. 
+\item This connection allows us to generalize accumulation-to-bound models using recurrent SSMs
+\item We can expand beyond 1D dynamics and more than 2 choices
+\item We can embed accumulation dimensions into larger models
+\item We can consider how to model serial dependencies across trials 
+\item This is a prime example of constraining models with theory \cite{linderman2017using}
+\end{enumerate}
+
+\section{Constraining recurrent state-space models to correspond to accumulation-to-bound}
 
 The models under consideration will in general have the following variables: a $D$-dimensional continuous latent state $x_t \in \mathbb{R}^D$, a set of $K$ discrete latent states $z_t \in \{ 1, 2, ... K \}$, $M$-dimensional inputs $u_t \in \mathbb{R}^M$, and $N$-dimensional observations $y_t \in \mathbb{R}^N$. 
 
@@ -147,12 +164,14 @@ The discrete transition probabilities are,
 \end{align*}
 We note that we can describe accumulation without a bound simply using a constrained LDS. 
 
-\subsubsection{Alternative parameterization of DDM with discrete input levels}
+\subsection{Alternative parameterization of DDM with discrete input levels}
 In some cases we may have a discrete set of input levels and we may want to learn the mapping from the input category to dynamics. For example, in the random dot motion (RDM) task, the discrete input levels are the different motion coherences and we may want to learn a different drift term for each coherence. 
 
 We can accomplish this by parameterizing $u_t$ as a one-hot vector encoding the stimulus category. If we have $C$ categories, then $u_t$ has $C$ dimensions and $V_{z_t} \in \mathbb{R}^{D \times C}$. We can then learn the elements of $V_{z_t}$, which when $D = 1$ correspond to the drifts for each stimulus category. 
 
  The dynamics under this parameterization remain the same as in equation~(\ref{eqn:ddm_dynamics}). 
+
+%\susection{We can incorporate other features of 1D Accumulator models}
 
 \subsection{1D Accumulator model}
 If we learn the dynamics parameter $A_{z_t}$ for the accumulation state, we can incorporate leaky ($A_{z_t} < 1$) or impulsive ($A_{z_t} > 1$) accumulation to bound. 
@@ -281,42 +300,44 @@ y_t | x_t, g_t & \sim \mathrm{Poisson}(\exp(C x_t + \mathrm{1} g_t))
 were $\mathrm{1}$ is a $N$-dimensional (number of observations) vector of ones such that the gain variable $g$ represents global fluctuations.  
 
 
-\section{More than just accumulation and boundary states}
-We could model 1) switches between accumulating and not-accumulating within a trial and 2) a random integration onset time in which integration does not necessarily start at the beginning of every analysis period. 
-
-\section{Beyond single-trials or single-choices \cite{huk2018beyond}}
-Models assume independent trials. We can be more flexible than this. 
-
-Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
-The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. ?
-
-\subsection{Sequential choice models (sequential accumulation models}
-
-\subsection{Reset accumulator model}
-We add an additional reset state. In the reset state, the continuous latent variable is independent of the previous latent variable
-\be
-x_t \sim \mathcal{N}(0 x_{t-1} + \mu_0, Q_0).
-\ee
-The transition probabilities could be setup such that the model transitions to the reset state after making a choice. 
-
-\section{Models of choice and behavior only}
-
-Model reaction-time, action-selection, and more? 
-\begin{enumerate}
-\item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
-\item Ideas: fit to behavioral correlates of decision, potentially continuous throughout the trial. Could be nonlinear mappings from latent dynamics to behavioral measurements.
-\end{enumerate}
-
-\section{Other modeling extensions}
-\begin{itemize}
-\item Learning mapping from inputs to latents (e.g. what time-lag?). Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
-\item Stepping vs. ramping models.Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
-\item Incorporate GLM observations on top of latents? 
-\end{itemize}
+%\section{More than just accumulation and boundary states}
+%We could model 1) switches between accumulating and not-accumulating within a trial and 2) a random integration onset time in which integration does not necessarily start at the beginning of every analysis period. 
+%
+%\section{Beyond single-trials or single-choices \cite{huk2018beyond}}
+%Models assume independent trials. We can be more flexible than this. 
+%
+%Fitting across trials - GLM dependent starting value, related to switching between accumulation or not, with resets?
+%The reset accumulator model, fit across trials, allows you to ask if at the start of each trial does the decision-variable reset, or is / what is the dependence on the ending accumulator model from the last trial. ?
+%
+%\subsection{Sequential choice models (sequential accumulation models}
+%
+%\subsection{Reset accumulator model}
+%We add an additional reset state. In the reset state, the continuous latent variable is independent of the previous latent variable
+%\be
+%x_t \sim \mathcal{N}(0 x_{t-1} + \mu_0, Q_0).
+%\ee
+%The transition probabilities could be setup such that the model transitions to the reset state after making a choice. 
+%
+%\section{Models of choice and behavior only}
+%
+%Model reaction-time, action-selection, and more? 
+%\begin{enumerate}
+%\item Another latent dimension could specify exploration vs. exploitation / biases of behavior. For example, could be a latent that is a bias on the choice probability or other choice readouts. 
+%\item Ideas: fit to behavioral correlates of decision, potentially continuous throughout the trial. Could be nonlinear mappings from latent dynamics to behavioral measurements.
+%\end{enumerate}
+%
+%\section{Other modeling extensions}
+%\begin{itemize}
+%\item Learning mapping from inputs to latents (e.g. what time-lag?). Here, let $V_{z_t}$ be a filter on the inputs... learn time-scale of mappings from input to latents. 
+%\item Stepping vs. ramping models.Have two-dimensions. One is an accumulation to bound process, while the other has no dynamics - just have state-dependent rates. The first dimension is ramping while the second dimension is stepping. Each neuron can have a linear readout from the two dimensions. The weight on each dimension corresponds to how much a neuron weights onto ramping or stepping! 
+%\item Incorporate GLM observations on top of latents? 
+%\end{itemize}
 
 \section{Inference}
 
 \subsection{Variational Inference}
+
+\subsection{Variational Laplace-EM (cite Chong Wang, Variational Inference in Nonconjugate Models}
 
 \subsection{Initialization}
 Given observations $y$, use factor analysis to compute $y \approx C \hat{x} + \mu$. Then find an affine transformation of $\hat{x}$ that maximizes the prior probability of the transformed $\hat{x}$ under the model 
@@ -334,7 +355,11 @@ Use $\hat{R}$ and $\hat{r}$ to transform $C$, $\hat{x}$, and $\mu$.
 \item Ramping and stepping models: 1-dimensional latent variable models of neural activity in decision-making \cite{latimer2015single}, \textbf{Zoltowski et al., 2019}. 
 \end{itemize}
 
+\section{Discussion}
+
+
 \subsubsection*{Acknowledgments}
+%ACKNOWLEDGE T32!
 
 %Use unnumbered third level headings for the acknowledgments. All acknowledgments
 %go at the end of the paper. Do not include acknowledgments in the anonymized
