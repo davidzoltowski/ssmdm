@@ -344,21 +344,64 @@ The lower bound on the marginal likelihood is given by
 \mathcal{L}_q(\theta) & = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta) - \log q(z) q(x)] \\
 & = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)] - \mathbb{E}_{q(z)}[\log q(z)] - \mathbb{E}_{q(x)}[\log q(x)].
 \end{align*}
-To optimize this objective, we alternate between the following updates: 
+To optimize this objective, we alternate between updating 1) $q(z)$, 2) $q(x)$ and 3) $\theta$. 
+
+\textbf{1. Update $q(z)$}. The update to $q(z)$ is given by the optimal coordinate ascent variational inference update
+\be
+q^\star(z)  \propto \exp ( \mathbb{E}_{q(x)}[\log p(x, z, y | \theta)] ).
+\ee
+We expand the expected joint log joint probability
 \begin{align*}
-q^\star(z) & \propto \exp ( \mathbb{E}_{q(x)}[\log p(x, z, y | \theta)] ) \\
-q^\star(x) &  = \mathcal{N}(x^\star, -H^{-1}) \\
-\theta^\star & = \argmax_\theta \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)].
+\mathbb{E}_{q(x)}[\log p(x, z, y | \theta)]  & = \mathbb{E}_{q(x)} [ \log p(z_1 | \theta) + \sum_{t=1}^T \log p(x_t, y_t | z_t, \theta) + \sum_{t=1}^{T-1} \log p(z_{t+1} | z_t, x_t, \theta) ] \\
+& =  \log p(z_1 | \theta) + \sum_{t=1}^T \mathbb{E}_{q(x)} [\log p(x_t, y_t | z_t, \theta)] + \sum_{t=1}^{T-1}  \mathbb{E}_{q(x)} [\log p(z_{t+1} | z_t, x_t, \theta) ] \\
+& = \phi(z_1) + \sum_{t=1}^{T} \phi(x_t, y_t, z_t) + \sum_{t=1}^{T-1} \phi(z_{t+1}, z_t, x_t)
 \end{align*}
-The update to $q^\star(z)$ is computed by drawing samples from $q(x)$. Condition on these samples, we have an HMM and the necessary marginals over $z$ (the single-variable marginals and pairwise marginals) can be computed via message passing algorithms. 
+where we have introduced the potentials 
+\begin{align*}
+\phi(z_1) & = \log p(z_1 | \theta) \\
+\phi(x_t, y_t, z_t) & = \mathbb{E}_{q(x)} [\log p(x_t, y_t | z_t, \theta)] \\
+\phi(z_{t+1}, z_t, x_t) & =  \mathbb{E}_{q(x)} [\log p(z_{t+1} | z_t, x_t, \theta) ].
+\end{align*}
+The update to $q^\star(z)$ is computed by drawing samples from $q(x)$. Condition on these samples, we have an HMM and the necessary marginals over $z$ (the unity and pairwise marginals) can be computed via message passing algorithms. 
+
+We introduce the normalizing constant of the distribution $Z(\theta)$ such that
+\be
+q(z) = \frac{1}{Z(\theta)} \exp \bigg(  \phi(z_1) + \sum_{t=1}^{T} \phi(x_t, y_t, z_t) + \sum_{t=1}^{T-1} \phi(z_{t+1}, z_t, x_t) \bigg)
+\ee
+and
+\be
+\log q(z) = - \log Z(\theta) + \phi(z_1) + \sum_{t=1}^{T} \phi(x_t, y_t, z_t) + \sum_{t=1}^{T-1} \phi(z_{t+1}, z_t, x_t).
+\ee
+We can evaluate the entropy term in the ELBO 
+\begin{align*}
+\mathbb{E}_{q(z)}[\log q(z)] & = \mathbb{E}_{q(z)}[- \log Z(\theta) + \phi(z_1) + \sum_{t=1}^{T} \phi(x_t, y_t, z_t) + \sum_{t=1}^{T-1} \phi(z_{t+1}, z_t, x_t)] \\
+& = -\log Z(\theta) + \mathbb{E}_{q(z)} [\phi(z_1)] + \sum_{t=1}^{T} \mathbb{E}_{q(z)}  [\phi(x_t, y_t, z_t)] + \sum_{t=1}^{T-1} \mathbb{E}_{q(z)} [\phi(z_{t+1}, z_t, x_t)]
+\end{align*}
+using the potentials, the unitary and pairwise marginals, and the normalizing constant.
+
+\textbf{2. Update $q(x)$}. 
+\be
+q^\star(x)  = \mathcal{N}(x^\star, -H^{-1}) 
+\ee
+
 
 The update $q^\star(x)$ is given by a Laplace approximation around the mode of $\mathbb{E}_{q(z)}[\log p(x, z, y | \theta)]$ such that 
 \begin{align*}
 x^\star &= \argmax_x \mathbb{E}_{q(z)}[\log p(x, z, y | \theta)] \\
 H &= \nabla_x^2 \mathbb{E}_{q(z)}[\log p(x, z, y | \theta)] \bigg|_{x = x^\star}.
 \end{align*}
-TODO: expand on the terms in the Laplace approximation. 
+\begin{itemize}
+\item TODO: expand on the terms in the Laplace approximation. 
+\item Newton's method, backtracking line search
+\item Poisson softplus, recurrent only Hessians 
+\item If no recurrence, then that term and Hessian drops out
+\item Poisson exponential, bernoulli, Gaussian hessians 
+\end{itemize}
 
+\textbf{3. Update $\theta$}
+\be
+\theta^\star = \argmax_\theta \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)].
+\ee
 In the update of $\theta$, instead of optimizing the expectation under the full distribution of $q(x)$ we optimize
 \be
 \theta^\star = \argmax_\theta \mathbb{E}_{q(z)}[\log p(\hat{x}, z, y | \theta)], \quad \hat{x} \sim q(x)
@@ -366,7 +409,7 @@ In the update of $\theta$, instead of optimizing the expectation under the full 
 using exact M-steps for the transition and latents dynamics parameters and lFBGS for the emissions parameters. 
 
 
-
+\subsection{References}
 References include: 
 \begin{enumerate}
 \item Variational Laplace-EM \cite{wang2013variational}
