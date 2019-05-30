@@ -337,7 +337,42 @@ were $\mathrm{1}$ is a $N$-dimensional (number of observations) vector of ones s
 
 \subsection{Variational Inference}
 
-\subsection{Variational Laplace-EM (cite Chong Wang, Variational Inference in Nonconjugate Models}
+\subsection{Variational Laplace-EM}
+
+The lower bound on the marginal likelihood is given by
+\begin{align*}
+\mathcal{L}_q(\theta) & = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta) - \log q(z) q(x)] \\
+& = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)] - \mathbb{E}_{q(z)}[\log q(z)] - \mathbb{E}_{q(x)}[\log q(x)].
+\end{align*}
+To optimize this objective, we alternate between the following updates: 
+\begin{align*}
+q^\star(z) & \propto \exp ( \mathbb{E}_{q(x)}[\log p(x, z, y | \theta)] ) \\
+q^\star(x) &  = \mathcal{N}(x^\star, -H^{-1}) \\
+\theta^\star & = \argmax_\theta \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)].
+\end{align*}
+The update to $q^\star(z)$ is computed by drawing samples from $q(x)$. Condition on these samples, we have an HMM and the necessary marginals over $z$ (the single-variable marginals and pairwise marginals) can be computed via message passing algorithms. 
+
+The update $q^\star(x)$ is given by a Laplace approximation around the mode of $\mathbb{E}_{q(z)}[\log p(x, z, y | \theta)]$ such that 
+\begin{align*}
+x^\star &= \argmax_x \mathbb{E}_{q(z)}[\log p(x, z, y | \theta)] \\
+H &= \nabla_x^2 \mathbb{E}_{q(z)}[\log p(x, z, y | \theta)] \bigg|_{x = x^\star}.
+\end{align*}
+TODO: expand on the terms in the Laplace approximation. 
+
+In the update of $\theta$, instead of optimizing the expectation under the full distribution of $q(x)$ we optimize
+\be
+\theta^\star = \argmax_\theta \mathbb{E}_{q(z)}[\log p(\hat{x}, z, y | \theta)], \quad \hat{x} \sim q(x)
+\ee
+using exact M-steps for the transition and latents dynamics parameters and lFBGS for the emissions parameters. 
+
+
+
+References include: 
+\begin{enumerate}
+\item Variational Laplace-EM \cite{wang2013variational}
+\item inference in Poisson LDS or state-space models models \cite{macke2011empirical,paninski2010new, macke2015estimating, archer2015black}
+\item Turner, Sahani \cite{turner2011two}
+\end{enumerate}
 
 \subsection{Initialization}
 Given observations $y$, use factor analysis to compute $y \approx C \hat{x} + \mu$. Then find an affine transformation of $\hat{x}$ that maximizes the prior probability of the transformed $\hat{x}$ under the model 
@@ -352,7 +387,8 @@ Use $\hat{R}$ and $\hat{r}$ to transform $C$, $\hat{x}$, and $\mu$.
 \item Theory-constrained state space models \cite{linderman2017using}
 \item Proposal of thinking ``beyond trial-based paradigms'' with review of relevant literature \cite{huk2018beyond}. The authors in  \cite{huk2018beyond} propose to integrate continuous neural activity measurements with behavior. This work could be useful for analyzing decision-making or action selection correlates across trials.
 \item Example of Kalman filtering being used in ``continuous psychophysics" \cite{bonnen2015continuous}.
-\item Ramping and stepping models: 1-dimensional latent variable models of neural activity in decision-making \cite{latimer2015single}, \textbf{Zoltowski et al., 2019}. 
+\item Ramping and stepping models: 1-dimensional latent variable models of neural activity in decision-making \cite{latimer2015single,zoltowski2019discrete}. 
+\item Application of rSLDS to neural recordings \cite{linderman2019hierarchical}
 \end{itemize}
 
 \section{Discussion}
