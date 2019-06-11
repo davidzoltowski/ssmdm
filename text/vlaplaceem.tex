@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage[pdftex]{graphicx} 
-\usepackage{natbib} % round/square, authoryear/numbers
+\usepackage[round]{natbib} % round/square, authoryear/numbers
 \usepackage{amsfonts,amsmath,amssymb,amsthm} % various math stuff
 % \usepackage[compact]{titlesec}  % Allow compact titles
 \usepackage{sectsty} % Allows for section style to be manipulated
@@ -11,6 +11,8 @@
 \usepackage{lineno}
 \usepackage[labelsep=period]{caption}
 \usepackage{lscape}
+\usepackage{nameref}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
 
 
 % ==  FONT  ===========================
@@ -97,42 +99,46 @@
 
 \section{Recurrent switching state-space models}
 
-We model $N$-dimensional observations $y_t$ at each time $t \in \{ 1, 2, \cdots, T\}$ as emissions from a recurrent switching state-space model, or recurrent switching linear dynamical system (rSLDS). The models have a $D$-dimensional continuous latent state $x_t \in \mathbb{R}^D$, a set of $K$ discrete latent states $z_t \in \{ 1, 2, \cdot, K \}$, and $M$-dimensional inputs $u_t \in \mathbb{R}^M$. 
+Here we describe the generative model for a recurrent switching linear dynamical system (rSLDS), following the treatment in \citep{linderman2017bayesian}. The rSLDS models $N$-dimensional observations $y_t$ at each time $t \in \{ 1, 2, \cdots, T\}$ via latent continuous and discrete components. 
 
-We define the rSLDS following the treatment in \cite{linderman2017bayesian}.
-
-The continuous latent state $x_t$ follows linear-Gaussian dynamics that depend on the discrete state $z_t$
+The continuous latent state $x_t \in \mathbb{R}^D$ follows linear-Gaussian dynamics that depend on the discrete state $z_t \in \{ 1, 2, \cdot, K \}$
 \be
 x_{t} = A_{z_t} x_{t-1} + V_{z_t} u_t + b_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, Q_{z_t})
 \ee
-where $A_{z_t}, Q_{z_t} \in \mathbb{R}^{D \times D}$, $V_{z_t} \in \mathbb{R}^{D \times M}$, and $b_{z_t} \in \mathbb{R}^D$ for each $z_t$. 
+where $A_{z_t}, Q_{z_t} \in \mathbb{R}^{D \times D}$, $V_{z_t} \in \mathbb{R}^{D \times M}$, and $b_{z_t} \in \mathbb{R}^D$ for each $z_t$. Here we have included a time-varying input $u_t \in \mathbb{R}^M$. 
 
-In general, in an rSLDS the discrete state at time $t+1$ depends on the discrete and continuous states at time $t$ and the current input at time $t+1$. The transition probabilities are given by \textbf{(note right hand side is a vector)}
+In general, in an rSLDS the discrete state at time $t+1$ depends on the discrete and continuous states at time $t$ and the current input at time $t+1$. The transition probabilities are given by 
 \be
 \log p(z_{t+1} | z_t, x_t, u_{t+1}, R_{z_t}, W_{z_t}, r_{z_t}) \propto R_{z_t} x_t + r_{z_t} + W_{z_t} u_{t+1}
 \ee
 where the dependence on the continuous state is controlled by $R_{z_t} \in \mathbb{R}^{K \times D}$, the dependence on the input is controlled by $W_{z_t} \in \mathbb{R}^{K \times M}$, and $r_{z_t} \in \mathbb{R}^M$ is a bias that captures dependencies in the discrete states. 
-%In an rSLDS, the observations are linear mappings from the continuous latent states 
-%\be
-%y_t = C_{z_t} x_t + d_{z_t} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, S_{z_t}). 
-%\ee
-We consider general emissions mappings from the latent variables to the observations of the form \textbf{TODO: include other emissions parameters?}
+In an rSLDS, the observations are linear Gaussian mappings from the continuous latent states 
 \be
-y_t \sim \mathcal{P}( f( C_{z_t} x_t + d_{z_t} ) ). 
+y_t = C_{z_t} x_t + d_{z_t} + F_{z_t} u_t + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, S_{z_t}). 
+\ee
+We also consider emissions mappings from the latent variables to the observations of the form
+\be
+y_t \sim \mathcal{P}( f( C_{z_t} x_t + F_{z_t} u_t +  d_{z_t} ) ). 
+\ee
+One example is modeling count data $y_t \in \mathbb{N}_0^N$ via a Poisson distribution with an exponential or softplus nonlinearity. In general, the model parameters are
+\be
+\theta = \{A_{z_t}, V_{z_t}, b_{z_t}, Q_{z_t}, R_{z_t}, r_{z_t}, W_{z_t}, 
 \ee
 
-\section{Variational Laplace-EM for Inference}
+\textbf{TODO: Add in other transition options including stationary (SLDS), input-driven}
+
+\section{Variational Laplace-EM Inference}
 
 Related work: 
 \begin{enumerate}
-\item Inference in recurrent switching state-space models \cite{linderman2017bayesian,nassar2018treestructured,linderman2019hierarchical}
-\item aSLDS \cite{barber2006expectation, barberBRML2012}
-\item Variational Laplace-EM \cite{wang2013variational}
-\item inference in Poisson LDS or state-space models models \cite{macke2011empirical,paninski2010new, macke2015estimating, archer2015black}
-\item Turner, Sahani \cite{turner2011two}
+\item Inference in recurrent switching state-space models \citep{linderman2017bayesian,nassar2019treestructured,linderman2019hierarchical}
+\item aSLDS \citep{barber2006expectation, barberBRML2012}
+\item Variational Laplace-EM \citep{wang2013variational}
+\item inference in Poisson LDS or state-space models models \citep{macke2011empirical,paninski2010new, macke2015estimating, archer2015black}
+\item Turner, Sahani \citep{turner2011two}
 \end{enumerate}
 
-Here we develop a variational Laplace-EM method for performing inference in recurrent switching state-space models. We introduce approximate posterior distributions $q(z)$ and $q(x)$ over the discrete and continuous latent variables, respectively. With those distributions we have a lower-bound on the marginal likelihood 
+Here we develop a variational Laplace-EM method for inference in recurrent switching state-space models. We introduce approximate posterior distributions $q(z)$ and $q(x)$ over the discrete and continuous latent variables, respectively. With those distributions we have a lower-bound on the marginal likelihood 
 \begin{align*}
 \mathcal{L}_q(\theta) & = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta) - \log q(z) q(x)] \\
 & = \mathbb{E}_{q(z) q(x)}[\log p(x, z, y | \theta)] - \mathbb{E}_{q(z)}[\log q(z)] - \mathbb{E}_{q(x)}[\log q(x)].
@@ -183,6 +189,9 @@ We can evaluate the entropy term in the ELBO
 \end{align*}
 using the potentials, the unitary and pairwise marginals, and the normalizing constant.
 
+%%%%
+% q(x)
+%%%%
 \subsection{Update $q(x)$}
 The update $q^\star(x)$ is given by a Laplace approximation around the mode of $\mathbb{E}_{q(z)}[\log p(x, z, y | \theta)]$ such that 
 \be
@@ -236,6 +245,9 @@ How to find $x^\star$? We have access to the Hessian matrix for the Laplace appr
 
 Main idea: Important Hessian terms are recurrent only (softmax) and stationary (SLDS, zeros) for transitions, Gaussian for dynamics (weighted by probability of each state), and then the emissions Hessian. 
 
+%%%%
+% \theta
+%%%%
 \subsection{Update $\theta$}
 We update the model parameters by approximately optimizing the lower bound
 \be
@@ -268,7 +280,7 @@ As described above, here we work with linear Gaussian dynamics for the continuou
 & = \mathbb{E}_{q(z)}[ -\frac{1}{2} (x_1 - \mu_{0,z_1})^\top Q_{0,z_1}^{-1} (x_1 - \mu_{0,z_1}) \\
 & \quad \quad \quad \, \, \, -\frac{1}{2} \sum_{t=2}^T (x_t - A_{z_t} x_{t-1})^\top Q_{z_t}^{-1} (x_t - A_{z_t} x_{t-1})] + \text{const}.
 \end{align*}
-Note, we have ignored the offset $b_{z_t}$ and input-dependence $V_{z_t}$ here because they do not contribute to the Hessian. The form of the Hessian follows from \cite{macke2015estimating}. 
+Note, we have ignored the offset $b_{z_t}$ and input-dependence $V_{z_t}$ here because they do not contribute to the Hessian. The form of the Hessian follows from \citep{macke2015estimating}. 
 
 Dynamics term:
 \be
@@ -287,6 +299,7 @@ The contributes to the lower-diagonal blocks.
 \nabla_{x_t} \nabla_{x_{t-1}} L = \mathbb{E}_{q(z_t)}[\nabla_{x_t} \nabla_{x_{t-1}} x_t^\top Q_{z_t}^{-1} A_{z_t} x_{t-1}] = \mathbb{E}_{q(z_t)}[\nabla_{x_t} A_{z_t}^\top Q_{z_t}^{-1} x_t] = \mathbb{E}_{q(z_t)}[Q_{z_t}^{-1} A_{z_t}]
 \ee
 
+See the following Hessian matrix and how it relates to \citep{macke2015estimating}
 {\small
 \be
 \begin{pmatrix}
@@ -298,6 +311,11 @@ The contributes to the lower-diagonal blocks.
 \ee
 }
 
+\textbf{TODO: Try switching diagonal terms to the following notation}
+\be
+-\mathbb{E}_{q(z_2)}[Q_{z_t}^{-1}] - \mathbb{E}_{q(z_3)}[A_{z_t}^\top Q_{z_t}^{-1} A_{z_t}] = - \mathbb{E}_{z_2, z_3}[Q_{z_2}^{-1} + A_{z_3}^\top Q_{z_3}^{-1} A_{z_3}]
+\ee
+
 \begin{itemize}
 \item Example option 1: SLDS with Poisson exp emissions. Gaussian dynamics. Other terms drop out.
 \item Example option 2: rSLDS with Poisson exp emissions, Gaussian dynamics, recurrent only transitions. Requires recurrent only Hessian.
@@ -306,8 +324,8 @@ The contributes to the lower-diagonal blocks.
 
 
 \small
-\bibliographystyle{plain}
-%\bibliographystyle{apalike}
+%\bibliographystyle{plain}
+\bibliographystyle{apalike}
 \bibliography{dzbib.bib}
 
 \end{document}
