@@ -401,7 +401,7 @@ class LatentRampingDDMGaussian(SLDS):
 
 # Transition model V2
 class Accumulator2DTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=50):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 3
         assert D == 2
 #         assert M == 2
@@ -456,7 +456,7 @@ class Accumulator2DObservations(AutoRegressiveDiagonalNoiseObservations):
         # Set the remaining parameters to fixed values
         self.bs = np.zeros((3, D))
         self.mu_init = np.zeros((3, D))
-        self._log_sigmasq_init = np.log(.01 * np.ones((3, D)))
+        self._log_sigmasq_init = np.log(.001 * np.ones((3, D)))
 
     @property
     def params(self):

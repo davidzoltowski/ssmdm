@@ -1,0 +1,258 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%
+%%% Helpful definitions for TeX
+%%%  Eero Simoncelli, 6/90.
+%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\long\def\comment#1{}
+\long\def\nocomment#1{#1}   %to easily re-insert commented text
+\long\def\mcomment#1{
+	\marginpar[\singlesp\footnotesize #1 \fbox{\rule{1ex}{0ex}\rule{0ex}{1ex}}]
+		  {\singlesp\footnotesize \fbox{\rule{1ex}{0ex}\rule{0ex}{1ex}} #1}}
+
+%%% Set the spacing between lines: 1.0 means single-space.
+%%% Must call a textsize command to get the new baselinestretch to
+%%% work.  Thus this function resets the text size to \normalsize.
+\def\setspacing#1{\renewcommand\baselinestretch{#1}\large\normalsize}
+
+%%%  Use before 1st paragraph of a section to force an indentation.
+%%% Correct solution is to redefine the sectioning commands in the
+%%% appropriate style files (eg, art11.sty).
+\newcommand{\yesindent}{\hspace*{\parindent}}    %%{\hskip \parindent}
+
+\newcommand\doublesp{\renewcommand\baselinestretch{1.8}\large\normalsize}
+\newcommand\singlesp{\renewcommand\baselinestretch{1.1}\large\normalsize}
+\newcommand\halfsp{\renewcommand\baselinestretch{1.5}\large\normalsize}
+
+\newenvironment{ct}
+	{\begin{center}\begin{tabular}}
+	{\end{tabular}\end{center}}
+
+%%% Non-numbered subsections, with table of contents entries
+\def\mychapter#1{\def\baselinestretch{1.0}\chapter{#1}\vskip 0.25in}
+\def\mychap#1{\addcontentsline{toc}{chapter}{#1}
+		\def\baselinestretch{1.0}\chapter*{#1}\vskip 0.25in}
+\def\mysec#1{\addcontentsline{toc}{section}{$\circ$\hskip 0.4em #1}
+		\section*{#1}}
+\def\mysubsec#1{\addcontentsline{toc}{subsection}{$\circ$\hskip 0.4em #1} 
+		\subsection*{#1}}
+\def\mysubsubsec#1{\addcontentsline{toc}{subsubsection}{$\circ$\hskip 0.4em #1}
+		\subsubsection*{#1}}
+
+%%% A macro for figures to be MANUALLY pasted.  The arguments are the figure
+%%% height, the figure label, and the figure caption.  The macro makes
+%%% space for the figure, prints the label in center of the space (as
+%%% an identifier), and prints the caption.
+\long\def\myfig#1#2#3{
+	\vbox to #1{\vfil \center{#2} \vfil} %Print label in box
+	\caption{#3}
+	\label{#2}}
+
+%%% Macro for vertically aligning a subfigure and its label.
+%%% Example usage: \sublabel{(a)}{\psfig{ ... }}
+\def\sublabel#1#2{ \begin{tabular}{c} #2 \\  #1 \end{tabular}}
+
+% %%% New version of \caption puts things in smaller type, single-spaced 
+% %%% and indents them to set them off more from the text.
+% \makeatletter
+% \long\def\@makecaption#1#2{
+% 	\vskip 0.8ex
+% 	\setbox\@tempboxa\hbox{\small {\bf #1:} #2}
+%         \parindent 1.5em  %% How can we use the global value of this???
+% 	\dimen0=\hsize
+% 	\advance\dimen0 by -3em
+% 	\ifdim \wd\@tempboxa >\dimen0
+% 		\hbox to \hsize{
+% 			\parindent 0em
+% 			\hfil 
+% 			\parbox{\dimen0}{\def\baselinestretch{0.96}\small
+% 				{\bf #1.} #2
+% 				%%\unhbox\@tempboxa
+% 				} 
+% 			\hfil}
+% 	\else \hbox to \hsize{\hfil \box\@tempboxa \hfil}
+% 	\fi
+% 	}
+% \makeatother
+
+%%%% original version of caption
+%\long\def\@makecaption#1#2{
+%   \vskip 10pt 
+%   \setbox\@tempboxa\hbox{#1: #2}  
+%   \ifdim \wd\@tempboxa >\hsize   % IF longer than one line:
+%       \unhbox\@tempboxa\par      %   THEN set as ordinary paragraph.
+%     \else                        %   ELSE  center.
+%       \hbox to\hsize{\hfil\box\@tempboxa\hfil}  
+%   \fi}
+
+%%% Footnotes without numbers, modified from latex.tex definition of
+%%% footnotetext.  NOTE: Can use \thanks if doing this on the title
+%%% page. 
+\makeatletter
+\long\def\barenote#1{
+    \insert\footins{\footnotesize
+    \interlinepenalty\interfootnotelinepenalty 
+    \splittopskip\footnotesep
+    \splitmaxdepth \dp\strutbox \floatingpenalty \@MM
+    \hsize\columnwidth \@parboxrestore
+    {\rule{\z@}{\footnotesep}\ignorespaces
+	      % indent
+      #1\strut}}}
+\makeatother
+
+\def\bulletnote#1{\barenote{$\bullet$ #1}}
+        
+%%% Math definitions:
+%\newtheorem{prop}{Proposition}
+%\newenvironment{proof}{{\sl Proof: }}{\rule{0.07in}{0.13in}}
+
+%%%p.100 Latex for \fbox with \rule
+%%%Hollow: {\fbox{\rule{0.07in}{0in}\rule{0in}{0.14in}}}
+
+%%% Inserting text into multi-line formulas.  See p. 193, Tex manual.
+%%% Can also use \rm \noindent instead of \hbox, allowing longer lines.
+%%\def\mtext#1{\noalign{\hbox{#1} \smallskip \medskip}}
+\long\def\mtext#1{\noalign{\rm \noindent{#1}}}
+
+%%% Insert space after or before or in an equation
+%% \vbox to \medskipamount{\vfil}
+%\def\eqsmallskip{\hbox{\smallskip }\nonumber\\}
+%\def\eqmedskip{\hbox{\medskip} \nonumber \\}  
+%\def\eqbigskip{\hbox{\bigskip} \nonumber \\} 
+\def\eqsmallskip{\rule[\baselineskip]{0pt}{\smallskipamount}}
+\def\eqmedskip{\rule[\baselineskip]{0pt}{\medskipamount}}
+\def\eqbigskip{\rule[\baselineskip]{0pt}{\bigskipamount}}
+
+%%% Alternative: use a strut (see p. 100 of LaTeX manual)
+
+%%% Display fraction in textstyle (ie, with slash rather than
+%%% horizontal bar)
+\def\sfrac#1#2{{\textstyle \frac{#1}{#2}}}   
+
+%% Format in tabbing (paragraph) mode, producing a box that is shrunk
+%% to fit the paragraph.  First arg is margin, second is paragraph.
+%% NOTE: minipage of tabbing fits paragraph, see LaTeX, p. 100.
+\makeatletter
+\long\def\shrinkbox{\@ifnextchar[{\@mgnshrinkbox}{\@shrinkbox}}
+
+\def\@shrinkbox#1{
+	\begin{minipage}{\columnwidth}\begin{tabbing}
+	#1
+	\end{tabbing}\end{minipage}}
+
+\def\@mgnshrinkbox[#1]#2{
+   \setbox\@tempboxa\hbox{\unskip\begin{minipage}{\columnwidth}\begin{tabbing}
+		#2
+		\end{tabbing}\end{minipage}\unskip}
+   \dimen0=\wd\@tempboxa
+   \advance\dimen0 by #1
+   %%\advance\dimen0 by #1
+   \dimen1=\ht\@tempboxa
+   \advance\dimen1 by #1
+   \advance\dimen1 by #1
+   \makebox[\dimen0]{\vbox to \dimen1{\vfil \box\@tempboxa \vfil}}}
+\makeatother
+
+%  \F for the Fourieroperator
+\newcommand{\F}{\mbox{$\cal F$}}
+
+%  \R and \C   The set of Real and Complex numbers
+%  may be used in equation or text mode
+%  LaTeX has \Re but no \Co; define both in the traditional form (non script)
+%\newcommand{\R}{\mbox{\rule[0ex]{.2ex}{1.56ex} \hspace{-1.6ex} \bf R}}
+\newcommand{\R}{\mbox{I \hspace{-2ex} {\bf R}}} 
+\newcommand{\C}{\mbox{   % mbox removes italics in equation mode
+                \rule[.125ex]{0ex}{1.1ex}  % take out second line for now
+                \hspace{-1.2ex}
+                \rule[.0625ex]{.2ex}{1.4ex}
+                \hspace{-2.4ex}
+                \bf C
+                }}
+\newcommand{\Z}{\mbox{Z\hspace{-2ex}{\bf Z}}}
+
+\def\etal{{\sl et~al.}}
+
+%%new caption macro
+%\makeatletter
+%\long\def\@makecaption#1#2{
+%        \vskip 10pt
+%        \setbox\@tempboxa\hbox{\small {\bf #1:} #2}
+%        \parindent .75em  %% How can we use the global value of this???
+%        \dimen0=\hsize
+%        \advance\dimen0 by -2\parindent
+%        \ifdim \wd\@tempboxa >\dimen0
+%                \hbox to \hsize{
+%                        \hfil
+%                        \parbox{\dimen0}{\def\baselinestretch{1.05}\small
+%                                {\bf #1:} #2
+%                                %%\unhbox\@tempboxa
+%                                }
+%                        \hfil}
+%        \else \hbox to \hsize{\hfil \box\@tempboxa \hfil}
+%        \fi}
+%\makeatother
+
+% ============================================================
+% More macros (jpdefs.tex)
+
+\newcommand{\asection}[1]{
+        \addtocounter{section}{1}
+        \setcounter{subsection}{0}
+        \section*{Appendix \Alph{section}: #1}
+        \addcontentsline{toc}{section}{Appendix \Alph{section}: #1}}
+
+\newcommand{\asubsection}[1]{
+        \addtocounter{subsection}{1}
+        \subsection*{\Alph{section}.\arabic{subsection} #1}
+\addcontentsline{toc}{subsection}{\Alph{section}.\arabic{subsection} #1}}
+
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+
+% ---------- Symbols for ``Reals'', ``Complex Numbers'', etc. ----
+\newcommand{\Reals}{{\sf R\hspace*{-0.9ex}\rule{0.15ex}%
+{1.5ex}\hspace*{0.9ex}}}
+\newcommand{\N}{{\sf N\hspace*{-1.0ex}\rule{0.15ex}%
+{1.3ex}\hspace*{1.0ex}}}
+\newcommand{\Q}{{\sf Q\hspace*{-1.1ex}\rule{0.15ex}%
+{1.5ex}\hspace*{1.1ex}}}
+\newcommand{\Complexs}{{\sf C\hspace*{-0.9ex}\rule{0.15ex}%
+{1.3ex}\hspace*{0.9ex}}}
+
+
+% --- Standard Math definitiones -----
+\newcommand{\RR}{I\!\!R} %real numbers 
+\newcommand{\Nat}{I\!\!N} %natural numbers 
+\newcommand{\CC}{I\!\!\!\!C} %complex numbers
+
+% ------- Others -------------------------------
+\newcommand{\deriv}[2]{\frac{d #1}{d #2}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\D}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\DD}[2]{\frac{\partial ^2 #1}{\partial #2 ^2}}
+\newcommand{\Di}[2]{\frac{\partial ^i #1}{\partial #2 ^i}}
+\newcommand{\evalat}[1]{\left.#1\right|}
+\newcommand{\parderiv}[2]{\frac{\partial #1}{\partial{#2}}}
+\newcommand{\parderivtwo}[3]{\frac{\partial^2 #1}{\partial{#2}\partial{#3}}}
+\newcommand{\parDeriv}[3]{\frac{\partial^{#3} #1}{\partial{#2}^{#3}}}
+\newcommand{\parwrt}[1]{\frac{\partial}{\partial{#1}}}
+\newcommand{\parpowrt}[2]{\frac{\partial^{#1}}{\partial {#2}^{#1}}}
+\newcommand{\partwowrt}[2]{\frac{\partial^{2}}{\partial {#2} \partial{#1}}}
+\newcommand{\inv}{^{-1}}
+\newcommand{\trp}{{^\top}} % transpose
+\newcommand{\onehlf}{\frac{1}{2}}
+\newcommand{\tonehlf}{\tfrac{1}{2}}
+\renewcommand{\eqref}[1]{eq.~\ref{eq:#1}}
+\newcommand{\Nrm}{\mathcal{N}}
+\newcommand{\Tr}{\mathrm{Tr}}
+\renewcommand{\inv}{^{-1}}
+\newcommand{\diag}{\mathrm{diag}}
+%\newcommand{\evalat}[1]{\left.#1\right|}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\renewcommand{\eqref}[1]{eq.~\ref{eq:#1}}
+\newcommand{\figef}[1]{Fig.~\ref{fig:#1}}
