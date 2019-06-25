@@ -12,20 +12,10 @@ sns.set_style("white")
 sns.set_context("talk")
 from ssmdm.misc import smooth
 from ssm.util import one_hot
-# npr.seed(0)
-npr.seed(2)
-
-# import neuron 1
-d = np.load("neuron1.npz")
-us = list(d["us"])
-ys = list(d["ys"])
-all_ys = [y.astype(int) for y in ys]
-all_us = us
-num_trials = len(us)
-
+npr.seed(0)
 
 # setup parameters
-numTrials = 200
+numTrials = 40
 bin_size = 0.01
 N = 1
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) #+ 0.01*npr.randn(5)
@@ -55,52 +45,24 @@ for tr in range(numTrials):
 	ys.append(y)
 	us.append(u)
 
-# sim_var = 1e-3
-# C = 40.0 + 3.0 * npr.randn(N,1)
-# print("True C: ", C)
-# ys, xs, zs, us, _, _ = simulate_ramping(beta=beta, x0=x0, w2=sim_var, C=C, T=numTrials, bin_size=bin_size)
-
 # initialize
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) + 0.01*npr.randn(5)
 x0 = 0.6 + 0.05 * npr.randn(1)
 log_sigma_scale = np.log(25 + 75*npr.rand())
 
-# initialize at true params
-# beta = beta
-# x0 = x0
-# log_sigma_scale = np.log(100)
-
 test_ddm = Ramping(N, M=5, link="softplus", beta=beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
-# test_ddm.emissions.Cs[0] =  latent_ddm.emissions.Cs[0]
 test_ddm.emissions.Cs[0] =  latent_ddm.emissions.Cs[0] + 2.0 * npr.randn(N,1)
-# test_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
 
 import copy
 init_params = copy.deepcopy(test_ddm.params)
 
 q_laplace_em = SLDSStructuredMeanFieldVariationalPosterior(test_ddm, ys, inputs=us)
-# q_svi = SLDSMeanFieldVariationalPosterior(test_ddm, ys, inputs=us, initial_variance=1e-4)
-# q_svi.params = [(xs[tr], q_svi.params[tr][1]) for tr in range(numTrials)]
 
 for tr in range(numTrials):
 	q_laplace_em.params[tr]["h"] *= 1000.0
-	# q_laplace_em.params[tr]["h"] = 10000.0 * xs[tr]
 	q_laplace_em.params[tr]["J_diag"] *= 1000.0
 
-# plt.ion()
-# plt.figure()
-# plt.plot(q_laplace_em.mean_continuous_states[0],'k')
-# for i in range(10):
-# 	x_samples = q_laplace_em.sample_continuous_states()
-# 	plt.plot(x_samples[0],'k',alpha=0.5)
-
-
-# q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=50, initialize=False, num_samples=1, alpha=0.5, num_optimizer_iters=25, maxiter=25)
-# q_svi_elbos = test_ddm.fit(q_svi, ys, inputs=us, method="svi", step_size=0.05, num_iters=100, initialize=False)
-# q_svi_elbos2 = test_ddm.fit(q_svi, ys, inputs=us, method="svi", step_size=0.05, num_iters=200, initialize=False)
-# q_svi_elbos3 = test_ddm.fit(q_svi, ys, inputs=us, method="svi", step_size=0.05, num_iters=200, initialize=False)
-
-num_iters = 75
+num_iters = 2
 Cs, dynamics_var, q_elbos = [], [], []
 x_mean, x_sample_mean, qx_diff = [], [], []
 
@@ -131,21 +93,11 @@ for iter in range(num_iters):
 	print("C: ", np.mean(test_ddm.emissions.Cs[0][0]))
 	print("X mean, X_sample mean:", x_mean[-1], x_sample_mean[-1])
 
-plt.ion()
 plt.figure(figsize=[6,6])
 plt.subplot(311)
 plt.title("Softplus, Binsize=0.01, N=1, Nsamp=5")
 plt.plot(np.arange(1,len(q_elbos)+1),q_elbos)
 plt.ylabel("ELBO")
-# plt.subplot(222)
-# plt.axhline(latent_ddm.dynamics.Sigmas[0],color='k')
-# plt.plot(dynamics_var)
-# plt.axhline(1e-4,color='r')
-# plt.legend(["true","inferred"])
-# plt.yscale("log")
-# plt.xlabel("iteration")
-# plt.ylabel("var")
-# plt.ylim(1e-4,1e-2)
 plt.subplot(312)
 plt.axhline(np.mean(latent_ddm.emissions.Cs[0]),color='k')
 plt.plot(Cs)
@@ -226,3 +178,6 @@ def plot_trial(q,model,ys,us,method="lem",true_xs=None,tr=0):
 
 	plt.tight_layout()
 	plt.show()
+
+plot_trial(q_laplace_em, test_ddm, ys, us, method="lem", true_xs=xs, tr=0)
+plt.show()
