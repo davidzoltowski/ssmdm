@@ -614,9 +614,9 @@ class Acc2DPoissonEmissions(PoissonEmissions):
 
     @ensure_args_are_lists
     def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=10, num_tr_iters=50):
-#         print("Initializing...")
-        pass
-        """
+        print("Initializing...")
+        # pass
+
         datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
         yhats = [self.link(np.clip(smooth(d,10), .01, np.inf)) for d in datas]
 
@@ -627,7 +627,9 @@ class Acc2DPoissonEmissions(PoissonEmissions):
         def _objective(params, itr):
             Td = sum([x.shape[0] for x in xhats])
             new_datas = [np.dot(x,params[0].T)+params[1] for x in xhats]
-            obj = Accumulator2D().log_likelihood(new_datas,inputs=inputs)
+            # import ipdb
+            # ipdb.set_trace()
+            obj = Accumulator2D(betas=np.array([0.02,0.02])).log_likelihood(new_datas,inputs=inputs)
             return -obj / Td
 
         # initialize R and r
@@ -663,7 +665,8 @@ class Acc2DPoissonEmissions(PoissonEmissions):
 
         self.Cs = (fa.W @ np.linalg.inv(R)).reshape([1,self.N,self.D])
         self.ds = fa.mean - fa.W @ np.linalg.inv(R) @ r
-        """
+
+
 class LatentAccumulator2DPoisson(SLDS):
     def __init__(self, N, K=3, D=2, *, M=2, betas=np.ones(2,), log_sigma_scale = np.log(10)*np.ones(2,), a_diag=np.ones((3,2,1)), link="softplus", bin_size=1.0):
 

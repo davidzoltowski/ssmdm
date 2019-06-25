@@ -7,7 +7,7 @@ from ssm.lds import SLDS
 
 from ssmdm.misc import smooth
 
-from ssm.util import random_rotation, ensure_args_are_lists
+from ssm.util import random_rotation, ensure_args_are_lists, one_hot
 from ssm.observations import Observations, AutoRegressiveDiagonalNoiseObservations
 from ssm.transitions import Transitions, RecurrentOnlyTransitions, RecurrentTransitions
 from ssm.init_state_distns import InitialStateDistribution
@@ -30,7 +30,7 @@ from ssm.util import ensure_args_are_lists, \
 from ssm.preprocessing import interpolate_data, pca_with_imputation
 
 class RampingTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=200):
+    def __init__(self, K, D, M=0, scale=500):
         assert K == 2
         assert D == 1
         # assert M == 1
@@ -97,14 +97,15 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
 
         # and the noise variances, which are initialized in the AR constructor
         # self._log_sigmasq[0] = np.log(1e-5) + np.exp(self.log_sigma_scale)
-        self._log_sigmasq[0] = np.log(1e-5) + self.log_sigma_scale
-        self._log_sigmasq[1] = np.log(1e-5)
+        self.base_var=1e-5
+        self._log_sigmasq[0] = np.log(self.base_var) + self.log_sigma_scale
+        self._log_sigmasq[1] = np.log(self.base_var)
 
         # set init params
         self.mu_init = self.x0 * np.ones((2,1))
         # self._log_sigmasq_init[0] = np.log(1e-5) + np.exp(self.log_sigma_scale)
-        self._log_sigmasq_init[0] = np.log(1e-5) + self.log_sigma_scale
-        self._log_sigmasq_init[1] = np.log(1e-5)
+        self._log_sigmasq_init[0] = np.log(self.base_var) + self.log_sigma_scale
+        self._log_sigmasq_init[1] = np.log(self.base_var)
 
         # They only differ in their input
         self.Vs[0] = self.beta    # ramp
@@ -113,6 +114,10 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         # Set the remaining parameters to fixed values
         self._As = np.ones((K, 1, 1))
         self.bs = np.zeros((K, 1))
+        # self._As[0] = np.ones((1,1))
+        # self._As[1] = 0.01 * np.ones((1,1))
+        # self.bs[0] = 0.0
+        # self.bs[1] = 1.01
 
         # self.l2_penalty_V = 1.0 / (0.1**2)
 
@@ -128,8 +133,8 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         sig_mask = np.reshape(np.array([1, 0]), (2, 1))
         # self._log_sigmasq = np.log(1e-5)*np.ones((2,1)) + sig_mask * np.exp(self.log_sigma_scale)
         # self._log_sigmasq_init = np.log(1e-5)*np.ones((2,1)) + sig_mask * np.exp(self.log_sigma_scale)
-        self._log_sigmasq = np.log(1e-5)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
-        self._log_sigmasq_init = np.log(1e-5)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
+        self._log_sigmasq = np.log(self.base_var)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
+        self._log_sigmasq_init = np.log(self.base_var)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
         self.mu_init = self.x0 * np.ones((2,1))
 
     def log_prior(self):
@@ -161,10 +166,10 @@ class RampingEmissions(PoissonEmissions):
     def params(self, value):
         self.Cs = value
 
-    def log_prior(self):
-        a = 2.0
-        b = 0.05
-        return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
+    # def log_prior(self):
+    #     a = 2.0
+    #     b = 0.05
+    #     return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
         # return np.sum(gamma.logpdf(self.Cs, 2, scale=1/0.025))
 
     def invert(self, data, input=None, mask=None, tag=None):
@@ -174,9 +179,9 @@ class RampingEmissions(PoissonEmissions):
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
         num_pad = 10
         xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
-        xhat[xhat > 1.05] = 1.05
+        xhat[xhat > 0.99] = 0.99
         if np.abs(xhat[0])>1.0:
-                xhat[0] = 0.4 + 0.01*npr.randn(1,np.shape(xhat)[1])
+                xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat
 
     @ensure_args_are_lists
@@ -234,3 +239,44 @@ class Ramping(SLDS):
                                 transitions=transition_distn,
                                 dynamics=dynamics_distn,
                                 emissions=emission_distn)
+
+def simulate_ramping(beta=np.linspace(-0.02,0.02,5), w2=3e-3, x0=0.5, C=40, T=100, bin_size=0.01):
+
+    NC = 5 # number of trial types
+    cohs = np.arange(NC)
+    trial_cohs = np.repeat(cohs, int(T / NC))
+    tr_lengths = np.random.randint(50,size=(T))+50
+    us = []
+    xs = []
+    zs = []
+    ys = []
+    for t in range(T):
+        tr_coh = trial_cohs[t]
+        betac = beta[tr_coh]
+
+        tr_length = tr_lengths[t]
+        x = np.zeros(tr_length)
+        z = np.zeros(tr_length)
+        x[0] = x0 + np.sqrt(w2)*npr.randn()
+        z[0] = 0
+        for i in np.arange(1,tr_length):
+
+            if x[i-1] >= 1.0:
+                x[i] = 1.0
+                z[i] = 1
+            else:
+                x[i] = np.min((1.0, x[i-1] + betac + np.sqrt(w2)*npr.randn()))
+                if x[i] >= 1.0:
+                    z[i] = 1
+                else:
+                    z[i] = 0
+
+        y = npr.poisson(np.log1p(np.exp(C*x))*bin_size)
+
+        u = np.tile(one_hot(tr_coh,5), (tr_length,1))
+        us.append(u)
+        xs.append(x.reshape((tr_length,1)))
+        zs.append(z.reshape((tr_length,1)))
+        ys.append(y.reshape((tr_length,1)))
+
+    return ys, xs, zs, us, tr_lengths, trial_cohs
