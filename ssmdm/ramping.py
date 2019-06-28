@@ -104,8 +104,10 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         # set init params
         self.mu_init = self.x0 * np.ones((2,1))
         # self._log_sigmasq_init[0] = np.log(1e-5) + np.exp(self.log_sigma_scale)
-        self._log_sigmasq_init[0] = np.log(self.base_var) + self.log_sigma_scale
-        self._log_sigmasq_init[1] = np.log(self.base_var)
+        # self._log_sigmasq_init[0] = np.log(self.base_var) + self.log_sigma_scale
+        # self._log_sigmasq_init[1] = np.log(self.base_var)
+        self._log_sigmasq_init[0] = np.log(1e-4) 
+        self._log_sigmasq_init[1] = np.log(1e-5)
 
         # They only differ in their input
         self.Vs[0] = self.beta    # ramp
@@ -166,10 +168,10 @@ class RampingEmissions(PoissonEmissions):
     def params(self, value):
         self.Cs = value
 
-    # def log_prior(self):
-    #     a = 2.0
-    #     b = 0.05
-    #     return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
+    def log_prior(self):
+        a = 2.0
+        b = 0.05
+        return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
         # return np.sum(gamma.logpdf(self.Cs, 2, scale=1/0.025))
 
     def invert(self, data, input=None, mask=None, tag=None):
@@ -177,26 +179,25 @@ class RampingEmissions(PoissonEmissions):
         yhat = smooth(data,20)
         xhat = self.link(np.clip(yhat, 0.01, np.inf))
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
-        num_pad = 10
-        xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
-        xhat[xhat > 0.99] = 0.99
-        if np.abs(xhat[0])>1.0:
-                xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
+        # num_pad = 10
+        # xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
+        # xhat[xhat > 0.99] = 0.99
+        # if np.abs(xhat[0])>1.0:
+        #         xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat
 
     @ensure_args_are_lists
     def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=10, num_tr_iters=50):
-#         print("Initializing...")
-        # datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
-        # yhats = [smooth(self.link(np.clip(d, .1, np.inf)),10) for d in datas]
-        # take the strongest motion trials (e.g. max inputs u) and compute rate at the end of the trials
-        # self.Cs = # set C to the above rate
+        # here, init params using data
+        # estimate boundary rate
+        # use that to estimate initial x0
+        # then guess? or sample? values of w2, betas
         pass
 
 # define new initial state distribution so the init parameters are not learned!
 
 class ObservedRamping(HMM):
-    def __init__(self, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(10), x0=0.4):
+    def __init__(self, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(10), x0=0.5):
 
         K, D, M = 2, 1, 5
 

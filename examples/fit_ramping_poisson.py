@@ -15,12 +15,12 @@ from ssm.util import one_hot
 npr.seed(0)
 
 # setup parameters
-numTrials = 40
+numTrials = 200
 bin_size = 0.01
 N = 1
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) #+ 0.01*npr.randn(5)
-log_sigma_scale = np.log(50)
-x0 = 0.6
+log_sigma_scale = np.log(100)
+x0 = 0.5
 latent_ddm = Ramping(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
 latent_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
 print("True C: ", np.mean(latent_ddm.emissions.Cs[0]))
@@ -47,11 +47,12 @@ for tr in range(numTrials):
 
 # initialize
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) + 0.01*npr.randn(5)
-x0 = 0.6 + 0.05 * npr.randn(1)
-log_sigma_scale = np.log(25 + 75*npr.rand())
+x0 = 0.5 + 0.05 * npr.randn(1)
+log_sigma_scale = np.log(50 + 150*npr.rand())
 
 test_ddm = Ramping(N, M=5, link="softplus", beta=beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
 test_ddm.emissions.Cs[0] =  latent_ddm.emissions.Cs[0] + 2.0 * npr.randn(N,1)
+# test_ddm.initialize(ys,inputs=us)
 
 import copy
 init_params = copy.deepcopy(test_ddm.params)
@@ -59,10 +60,11 @@ init_params = copy.deepcopy(test_ddm.params)
 q_laplace_em = SLDSStructuredMeanFieldVariationalPosterior(test_ddm, ys, inputs=us)
 
 for tr in range(numTrials):
-	q_laplace_em.params[tr]["h"] *= 1000.0
+	# q_laplace_em.params[tr]["h"] *= 100.0
+	q_laplace_em.params[tr]["h"] *= 1000.0 * xs[tr]
 	q_laplace_em.params[tr]["J_diag"] *= 1000.0
 
-num_iters = 2
+num_iters = 25
 Cs, dynamics_var, q_elbos = [], [], []
 x_mean, x_sample_mean, qx_diff = [], [], []
 
@@ -78,7 +80,9 @@ print("X mean, X_sample mean:", x_mean[-1], x_sample_mean[-1])
 for iter in range(num_iters):
 	print("Iteration: ", iter)
 	q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
-							   num_samples=5, alpha=0.75, emission_optimizer_maxiter=10, continuous_maxiter=50, continuous_optimizer="newton", continuous_tolerance=1e-6)
+							   num_samples=5, alpha=0.5, emission_optimizer_maxiter=10, continuous_maxiter=50,
+							   continuous_optimizer="newton", continuous_tolerance=1e-6,
+							   parameters_update="mstep")
 	# q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
 							   # num_samples=1, alpha=0.75, emission_optimizer_maxiter=50, continuous_maxiter=100)
 	q_elbos.append(q_lem_elbos[1])

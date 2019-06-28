@@ -23,6 +23,27 @@ def generate_clicks(T=1.0,dt=0.01,rate_r=20,rate_l=20):
 
     return binned_r, binned_l
 
+def generate_clicks_D(rates,T=1.0,dt=0.01):
+    """
+    This function generates 'clicks' from D Poisson processes with rates specified in rates
+    over T seconds with bin sizes dt. The outputs are binned clicks into discrete time bins.
+
+    rates is a list of D rates.
+    """
+
+    # number of clicks
+    num_clicks = [npr.poisson(rate*T) for rate in rates]
+
+    # click times
+    click_times = [np.sort(npr.uniform(low=0.0,high=T,size=[num_click,1]))
+                   for num_click in num_clicks]
+
+    # binned outputs are arrays with dimensions Tx1
+    binned_clicks = [np.histogram(click_time,np.arange(0.0,T+dt,dt))[0]
+                     for click_time in click_times]
+
+    return binned_clicks
+
 def factor_analysis(D, ys, num_iters=15):
     # D is number of latent dimensions
     # ys is list of data points
