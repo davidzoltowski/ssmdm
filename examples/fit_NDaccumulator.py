@@ -109,6 +109,9 @@ init_params = copy.deepcopy(test_acc.params)
 q_lem = SLDSStructuredMeanFieldVariationalPosterior(test_acc, ys, inputs=us)
 q_elbos = test_acc.fit(q_lem, ys, inputs=us, num_iters=25, method="laplace_em", initialize=False,
 						num_samples=1, alpha=0.5, continuous_maxiter=50, emission_optimizer_maxiter=50, continuous_optimizer="newton")
+q_elbos2 = test_acc.fit(q_lem, ys, inputs=us, num_iters=5, method="laplace_em", initialize=False,
+						num_samples=1, alpha=0.5, continuous_maxiter=50, emission_optimizer_maxiter=50, continuous_optimizer="newton")
+
 
 plt.figure()
 plt.plot(q_elbos[1:])
@@ -157,19 +160,19 @@ def plot_sim_results(tr=0):
 
     else:
 	    plt.subplot(232)
-	    true_y = smooth(ys[tr],20) / test_acc.emissions.bin_size
-	    # true_y = softplus(np.dot(xs[tr], latent_acc.emissions.Cs[0].T) + latent_acc.emissions.ds[0])
+	    # true_y = smooth(ys[tr],20) / test_acc.emissions.bin_size
+	    true_y = softplus(np.dot(xs[tr], latent_acc.emissions.Cs[0].T) + latent_acc.emissions.ds[0])
 	    # smooth_y = yhat
 	    smooth_y = yhat / test_acc.emissions.bin_size
 	    lim = max(true_y.max(), smooth_y.max())
 	    lim_min = min(true_y.min(), smooth_y.min())
 	    plt.imshow(true_y.T,aspect="auto", vmin=lim_min, vmax=lim)
-	    plt.title("true y")
+	    plt.title("true rate")
 	    plt.colorbar()
 	    plt.xlabel('time bin')
 	    plt.ylabel('neuron')
 	    plt.subplot(233)
-	    plt.title("inferred y")
+	    plt.title("inferred rate")
 	    plt.imshow(smooth_y.T,aspect="auto", vmin=lim_min, vmax=lim)
 	    plt.colorbar()
 	    plt.xlabel('time bin')

@@ -26,7 +26,7 @@ bin_size = 0.01
 # bin_size = 1.0
 N = 1
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02])
-latent_ddm = Ramping(N, M=5, link="softplus", beta = beta, log_sigma_scale=np.log(30), x0=0.5, bin_size=bin_size)
+latent_ddm = Ramping(N, M=5, link="softplus", beta = beta, log_sigma_scale=np.log(1e-3), x0=0.5, bin_size=bin_size)
 latent_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
 
 ys = []
@@ -45,12 +45,14 @@ for tr in range(numTrials):
 	ys.append(y)
 	us.append(u)
 
-q_laplace_em = SLDSStructuredMeanFieldVariationalPosterior(latent_ddm, ys, inputs=us)
+q_laplace_em = SLDSStructuredMeanFieldVariationalPosterior(latent_ddm, ys, inputs=us, initial_variance=1e-7)
+for tr in range(numTrials):
+	q_laplace_em.params[tr]["h"] = 1e7 * xs[tr]
 q_lem_elbos = latent_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
-						   num_samples=1, alpha=0.5, emission_optimizer_maxiter=5, continuous_maxiter=50)
+						   num_samples=1, alpha=0.5, emission_optimizer_maxiter=10, continuous_maxiter=50)
 
 # test hessian
-tr = 12
+tr =0
 discrete_expectations = q_laplace_em.mean_discrete_states
 Ez, Ezzp1, _ = discrete_expectations[tr]
 input = us[tr]
@@ -101,3 +103,4 @@ H_diag, H_lower_diag = hessian_neg_expected_log_joint(x, Ez, Ezzp1)
 H = blocks_to_full(H_diag, H_lower_diag)
 
 assert np.allclose(H,H_autograd)
+np.linalg.norm(H-H_autograd)
