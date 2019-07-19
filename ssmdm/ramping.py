@@ -31,7 +31,7 @@ from ssm.util import ensure_args_are_lists, \
 from ssm.preprocessing import interpolate_data, pca_with_imputation
 
 class RampingTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=1):
+    def __init__(self, K, D, M=0, scale=100):
         assert K == 2
         assert D == 1
         # assert M == 1
@@ -58,17 +58,16 @@ class RampingTransitions(RecurrentOnlyTransitions):
 
 
 class RampingHardTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=500):
+    def __init__(self, K, D, M=0, scale=50):
         assert K == 2
         assert D == 1
         # assert M == 1
         super(RampingHardTransitions, self).__init__(K, D, M)
 
         # Parameters linking past observations to state distribution
-        self.log_Ps = np.array([[0, -scale], [-10, 10]])
+        self.log_Ps = np.array([[0, -scale], [-50, 50]])
         self.Ws = np.zeros((K, M))
-        # self.Rs = np.array([0, scale*0.75]).reshape((K, D))
-        self.Rs = np.array([0, scale*1.0]).reshape((K, D))
+        self.Rs = np.array([0, scale]).reshape((K, D))
 
     @property
     def params(self):
@@ -98,7 +97,7 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         self.x0 = x0 # mu init
 
         # and the noise variances, which are initialized in the AR constructor
-        self.base_var=1e-6
+        self.base_var=1e-8
         # self._log_sigmasq[0] = np.log(self.base_var) + self.log_sigma_scale
         # self._log_sigmasq[1] = np.log(self.base_var)
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
@@ -181,7 +180,7 @@ class RampingEmissions(PoissonEmissions):
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
         num_pad = 10
         xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
-        xhat[xhat > 0.99] = 0.99
+        xhat[xhat > 1.05] = 1.05
         if np.abs(xhat[0])>1.0:
                 xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat
@@ -242,7 +241,7 @@ class Ramping(SLDS):
                                 emissions=emission_distn)
 
 class RampingHard(SLDS):
-    def __init__(self, N, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(100), x0=0.4, link="softplus", bin_size=1.0):
+    def __init__(self, N, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.4, link="softplus", bin_size=1.0):
 
         K, D, M = 2, 1, 5
 

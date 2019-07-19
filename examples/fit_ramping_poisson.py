@@ -19,7 +19,7 @@ numTrials = 200
 bin_size = 0.01
 # bin_size = 1.0
 N = 1
-beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) #+ 0.01*npr.randn(5)
+beta = np.array([-0.005,-0.0025,0.0,0.0075,0.015]) #+ 0.01*npr.randn(5)
 # beta = np.array([-0.01,-0.005,0.0,0.001,0.001]) #+ 0.01*npr.randn(5)
 # log_sigma_scale = np.log(1000)
 log_sigma_scale = np.log(1e-3)
@@ -57,16 +57,18 @@ cohs = np.array(cohs)
 # initialize
 beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) + 0.01*npr.randn(5)
 # beta = np.array([-0.01,-0.005,0.0,0.001,0.001]) + 0.001*npr.randn(5)
-x0 = 0.5 + 0.05 * npr.randn(1)
+# x0 = 0.5 + 0.05 * npr.randn(1)
 log_sigma_scale = np.log(5e-4+1.5e-3*npr.rand())
 # beta = beta
-# x0 = x0
+x0 = x0
 # log_sigma_scale = log_sigma_scale
 
 def initialize_ramp(ys,cohs, bin_size):
 	coh5 = np.where(cohs==4)[0]
-	y_end = np.array([y[-3:-1] for y in ys])
-	y_end_5 = y_end[coh5]
+	coh4 = np.where(cohs==3)[0]
+	y_end = np.array([y[-5:] for y in ys])
+	y_end_5 = y_end[np.concatenate((coh5,coh4))]
+	# y_end_5 = y_end[coh5]
 	C = np.mean(y_end_5) / bin_size
 	y0_mean = np.mean([y[0] for y in ys])
 	x0 = y0_mean / C / bin_size
@@ -101,6 +103,7 @@ dynamics_var.append(test_ddm.dynamics.Sigmas[0][0][0])
 Cs.append(test_ddm.emissions.Cs[0][0])
 
 print("Initial C: ", test_ddm.emissions.Cs[0][0])
+print("Initial x0: ", x0)
 print("True x mean: ", np.mean(np.vstack(xs)))
 print("X mean, X_sample mean:", x_mean[-1], x_sample_mean[-1])
 params = []
@@ -108,9 +111,10 @@ params.append(test_ddm.params)
 for iter in range(num_iters):
 	print("Iteration: ", iter)
 	q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
-							   num_samples=3, alpha=0.5, emission_optimizer_maxiter=10, continuous_maxiter=50,
+							   num_samples=1, alpha=0.5, emission_optimizer_maxiter=25, continuous_maxiter=50,
 							   continuous_optimizer="newton", continuous_tolerance=1e-6,
-							   parameters_update="mstep")
+							   # parameters_update="mstep")
+							   parameters_update="sgd")
 	# q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
 							   # num_samples=1, alpha=0.75, emission_optimizer_maxiter=50, continuous_maxiter=100)
 	q_elbos.append(q_lem_elbos[1])
@@ -149,7 +153,6 @@ plt.tight_layout()
 plt.ion()
 plt.figure()
 plt.plot(q_elbos)
-plt.plot()
 plt.ylabel("ELBO")
 plt.xlabel("iteration")
 plt.tight_layout()
@@ -196,7 +199,7 @@ def plot_trial(q,model,ys,us,method="lem",true_xs=None,tr=0):
 	plt.ylabel("$x$")
 	# plt.plot((q_lem_z[:,None]-1)*0.5)
 
-	if np.shape(yhat)[1] < 6:
+	if np.shape(yhat)[1] < 4:
 		plt.subplot(122)
 		plt.plot(smooth(ys[tr],10) / bin_size,'k');
 		plt.plot(softplus(xs[tr]*latent_ddm.emissions.Cs[0]))
@@ -233,7 +236,7 @@ plt.show()
 def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 	numTrials = len(ys)
 	rand_trials = npr.choice(range(numTrials),3)
-	plt.figure(figsize=[12,12])
+	plt.figure(figsize=[12,6])
 	for idx, tr in enumerate(rand_trials):
 		if method == "lem":
 			q_lem_x = q.mean_continuous_states[tr]
@@ -253,7 +256,7 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 
 		yhat = model.smooth(q_lem_x, ys[tr], input=us[tr])
 		# plt.subplot(121)
-		plt.subplot(5,2,(idx*2)+1)
+		plt.subplot(3,2,(idx*2)+1)
 		if true_xs is not None:
 			plt.plot(true_xs[tr],'k',label="true")
 		plt.plot(q_lem_x,'b',label="inferred")
@@ -270,7 +273,7 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 		# plt.plot((q_lem_z[:,None]-1)*0.5)
 
 		if np.shape(yhat)[1] < 6:
-			plt.subplot(5,2,(idx*2)+2)
+			plt.subplot(3,2,(idx*2)+2)
 			plt.plot(smooth(ys[tr],10) / bin_size,'k');
 			plt.plot(softplus(xs[tr]*latent_ddm.emissions.Cs[0]))
 			plt.plot(yhat / bin_size,'b');
@@ -282,7 +285,7 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 				plt.legend(["true smoothed", "true rate","inferred rate"])
 
 		else:
-			plt.subplot(5,2,(idx*2)+2)
+			plt.subplot(3,2,(idx*2)+2)
 			# true_y = smooth(ys[tr],20) / bin_size
 			# smooth_y = yhat / bin_size
 			# plt.imshow(np.concatenate((true_y, smooth_y),axis=1).T,aspect="auto")

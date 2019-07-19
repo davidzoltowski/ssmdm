@@ -2,8 +2,6 @@ import autograd.numpy as np
 import autograd.numpy.random as npr
 
 from ssmdm.models import Accumulator2D, LatentAccumulator2DPoisson
-from ssm.variational import SLDSMeanFieldVariationalPosterior, SLDSTriDiagVariationalPosterior, \
-	SLDSStructuredMeanFieldVariationalPosterior
 from ssm.util import softplus
 
 import matplotlib

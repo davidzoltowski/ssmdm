@@ -10,7 +10,7 @@ from ssmdm.misc import smooth
 
 from ssm.util import random_rotation, ensure_args_are_lists
 from ssm.observations import Observations, AutoRegressiveDiagonalNoiseObservations
-from ssm.transitions import Transitions, RecurrentOnlyTransitions
+from ssm.transitions import Transitions, RecurrentTransitions, RecurrentOnlyTransitions
 from ssm.init_state_distns import InitialStateDistribution
 from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
 from ssm.preprocessing import factor_analysis_with_imputation
@@ -31,7 +31,7 @@ from ssm.util import ensure_args_are_lists, \
 from ssm.preprocessing import interpolate_data, pca_with_imputation
 
 class AccumulationRaceTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=200):
+    def __init__(self, K, D, M=0, scale=100):
         assert K == D+1
         assert D >= 1
         super(AccumulationRaceTransitions, self).__init__(K, D, M)
@@ -58,6 +58,36 @@ class AccumulationRaceTransitions(RecurrentOnlyTransitions):
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
 
+class AccumulationRaceHardTransitions(RecurrentTransitions):
+    def __init__(self, K, D, M=0, scale=100):
+        assert K == D+1
+        assert D >= 1
+        super(AccumulationRaceHardTransitions, self).__init__(K, D, M)
+
+        # "Race" transitions with D+1 states
+        # Transition to state d when x_d > 1.0
+        # State 0 is the accumulation state
+        # scale determines sharpness of the threshold
+        top_row = np.concatenate(([0.0],-scale*np.ones(D)))
+        rest_rows = np.hstack((-scale*np.ones((D,1)),-scale*np.ones((D,D)) + np.diag(2.0*scale*np.ones(D))))
+        self.log_Ps = np.vstack((top_row,rest_rows))
+        self.Ws = np.zeros((K,M))
+        self.Rs = np.vstack((np.zeros(D),scale*np.eye(D)))
+
+    @property
+    def params(self):
+        return ()
+
+    @params.setter
+    def params(self, value):
+        pass
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        pass
+
 class DDMTransitions(RecurrentOnlyTransitions):
     def __init__(self, K, D, M=0, scale=200):
         assert K == 3
@@ -69,6 +99,32 @@ class DDMTransitions(RecurrentOnlyTransitions):
         self.Ws = np.zeros((3, M))
         self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
         self.r = np.array([0, -scale, -scale])
+
+    @property
+    def params(self):
+        return ()
+
+    @params.setter
+    def params(self, value):
+        pass
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        pass
+
+class DDMHardTransitions(RecurrentTransitions):
+    def __init__(self, K, D, M=0, scale=500):
+        assert K == 3
+        assert D == 1
+        # assert M == 1
+        super(DDMHardTransitions, self).__init__(K, D, M)
+
+        # Parameters linking past observations to state distribution
+        self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
+        self.Ws = np.zeros((K, M))
+        self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
 
     @property
     def params(self):
@@ -117,7 +173,8 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         self.accum_log_sigmasq = np.log(1e-3)*np.ones(D,)
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
         mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
-        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(1e-4) * mask2
+        self.bound_variance = 1e-4
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
 
         # Set the remaining parameters to fixed values
         self.bs = np.zeros((K, D))
@@ -147,7 +204,7 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         # update sigma
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
         mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
-        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(1e-4) * mask2
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
 
         # update A
         if self.learn_A:
@@ -184,7 +241,9 @@ class Accumulation(HMM):
 
         transition_classes = dict(
             race=AccumulationRaceTransitions,
-            ddm=DDMTransitions)
+            racehard=AccumulationRaceHardTransitions,
+            ddm=DDMTransitions,
+            ddmhard=DDMHardTransitions)
         transition_kwargs = transition_kwargs or {}
         transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
 
@@ -327,7 +386,9 @@ class LatentAccumulation(SLDS):
 
         transition_classes = dict(
             race=AccumulationRaceTransitions,
-            ddm=DDMTransitions)
+            racehard=AccumulationRaceHardTransitions,
+            ddm=DDMTransitions,
+            ddmhard=DDMHardTransitions)
         self.transitions_label = transitions
         self.transition_kwargs = transition_kwargs
         transition_kwargs = transition_kwargs or {}
@@ -361,6 +422,9 @@ class LatentAccumulation(SLDS):
                                        transitions=self.transitions_label,
                                        transition_kwargs=self.transition_kwargs,
                                        observation_kwargs=self.dynamics_kwargs)
+        self.base_model.observations.Vs = self.dynamics.Vs
+        self.base_model.observations.As = self.dynamics.As
+        self.base_model.observations.Sigmas = self.dynamics.Sigmas
         # if betas is not None:
         #     self.base_model.betas = betas
         # if log_sigma_scale is not None:

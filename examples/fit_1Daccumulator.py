@@ -13,7 +13,8 @@ sns.set_context("talk")
 from ssmdm.misc import smooth, generate_clicks, generate_clicks_D
 from ssm.util import softplus
 # npr.seed(12345)
-npr.seed(1)
+# npr.seed(1) # good example! (if you remove test_acc Vs[0] line)
+npr.seed(1234)
 
 # 1D Accumulator with Poisson observations
 D = 1 		# number of accumulation dimensions
@@ -25,8 +26,8 @@ latent_acc = LatentAccumulation(N, K, D, M=M,
 								transitions="ddmhard",
 								emissions="poisson",
 								emission_kwargs={"bin_size":bin_size})
-latent_acc.dynamics.Vs[0] = 0.9*np.ones((D,))
-latent_acc.dynamics._log_sigmasq[0] = np.log(5e-4)*np.ones((D,))
+latent_acc.dynamics.Vs[0] = 0.1*np.ones((D,))
+latent_acc.dynamics._log_sigmasq[0] = np.log(2e-3)*np.ones((D,))
 
 # AR-HMM with ND race accumulator observations
 # acc = Accumulation(K, D, M=M)
@@ -63,7 +64,7 @@ for smpl in range(N_samples):
     u = generate_clicks_D(rates,T=trial_time,dt=dt)
 
     # input is sum of u_r and u_l
-    u = (0.075*np.array(u[1] - u[0]).T).reshape((T,1))
+    u = (1.0*np.array(u[1] - u[0]).T).reshape((T,1))
     # u = 0.075*np.array(u).T
     # u = npr.choice([-0.05,0.05])
     # u = u*np.ones((T,1))
@@ -74,73 +75,30 @@ for smpl in range(N_samples):
     xs.append(x)
     ys.append(y)
 
-# plt.ion()
-# plt.figure()
-# for tr in range(N_samples):
-# 	plt.plot(xs[tr],'k',alpha=0.5)
-
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[10],'r',label="trial 1")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# # plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr1.png")
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[28],'b',label="trial 2")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# # plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr2.png")
-#
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[10],'r',label="trial 1")
-# plt.plot(xs[28],'b',label="trial 2")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr12.png")
-
-
-
 # fit SLDS model to ys
 # initialize
 test_acc = LatentAccumulation(N, K, D, M=M, transitions="ddmhard",
 							  emissions="poisson", emission_kwargs={"bin_size":bin_size})
-test_acc.initialize(ys, inputs=us)
+test_acc.dynamics.betas = np.array([0.0 + 0.1*npr.rand()])
+# test_acc.initialize(ys, inputs=us)
+test_acc.emissions.params = latent_acc.emissions.params
+print("V init: ", test_acc.dynamics.betas)
 init_params = copy.deepcopy(test_acc.params)
 
 # fit
 q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior="structured_meanfield",
-							  num_iters=20, alpha=0.5, initialize=False)
+							  num_iters=5, alpha=0.5, initialize=False)
 q_elbos2, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior=q_lem,
 							  num_iters=10, alpha=0.5, initialize=False)
 
+plt.ion()
 plt.figure()
 plt.plot(q_elbos[1:])
 plt.xlabel("iteration")
 plt.ylabel("ELBO")
 
-plt.ion()
 plt.figure()
 plt.imshow(np.concatenate((latent_acc.emissions.Cs[0,:,:],test_acc.emissions.Cs[0,:,:]),axis=1),aspect='auto')
 plt.xticks([0.5, 2.5], ["$C_{\\mathrm{true}}$", "$C_{\\mathrm{FA+Init}}$"])
@@ -156,15 +114,6 @@ def plot_sim_results(tr=0):
     for d in range(np.shape(q_x)[1]):
 	    plt.plot(xs[tr],'k', label="true" if d==0 else None)
 	    plt.plot(q_x,'r--',label="inferred" if d==0 else None)
-    # plt.plot(xs[tr],'k',label="true")
-    # plt.plot(q_x,'r--',label="inferred")
-    # plt.plot(xs[tr][:,0],'r', label="true")
-    # plt.plot(xs[tr][:,1],'b')
-    # # plt.plot(xs[tr][:,2],'k')
-    # # plt.plot(q_x,'r--',label="inferred")
-    # plt.plot(q_x[:,0],'m--', label="inferred")
-    # plt.plot(q_x[:,1],'c--')
-    # plt.plot(q_x[:,2],'g--')
     plt.xlim(xlim)
     plt.xlabel('time bin')
     plt.ylabel('x')
@@ -174,25 +123,18 @@ def plot_sim_results(tr=0):
 	    plt.subplot(232)
 	    true_y = softplus(np.dot(xs[tr], latent_acc.emissions.Cs[0].T) + latent_acc.emissions.ds[0])
 	    yhat = softplus(np.dot(q_x, test_acc.emissions.Cs[0].T) + test_acc.emissions.ds[0])
-	    # plt.plot(latent_acc.emissions.mean(np.dot(xs[tr],C.T)+d),'k')
 	    from scipy.ndimage import gaussian_filter1d
 	    y_smooth = smooth(ys[tr],5) / latent_acc.emissions.bin_size
 	    for n in range(np.shape(ys[tr])[1]):
 		    plt.plot(gaussian_filter1d(y_smooth[:,n],3),'k',alpha=0.75)
-	    # plt.plot(smooth(ys[tr],5) / latent_acc.emissions.bin_size, 'k', alpha=0.75)
-	    # plt.plot(ys[tr], 'k')
-	    # plt.plot(true_y, 'k')
 	    plt.plot(yhat,'r',alpha=0.75)
-	    # plt.plot(yhat / bin_size,'r--')
 	    plt.xlim(xlim)
 	    plt.xlabel('time bin')
 	    plt.ylabel('y (observations)')
 
     else:
 	    plt.subplot(232)
-	    # true_y = smooth(ys[tr],20) / test_acc.emissions.bin_size
 	    true_y = softplus(np.dot(xs[tr], latent_acc.emissions.Cs[0].T) + latent_acc.emissions.ds[0])
-	    # smooth_y = yhat
 	    smooth_y = yhat / test_acc.emissions.bin_size
 	    lim = max(true_y.max(), smooth_y.max())
 	    lim_min = min(true_y.min(), smooth_y.min())
@@ -234,24 +176,3 @@ def plot_sim_results(tr=0):
     plt.tight_layout()
 
 plot_sim_results(tr=0)
-
-# tr=0
-# tr+=1
-# q_x = q_lem.mean_continuous_states[tr]
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([-0.2,1.0]),np.array([1.0,1.0]),'k--')
-# plt.plot(np.array([1.0,1.0]),np.array([-0.2,1.0]),'k--')
-# plt.plot(np.array([1.0,1.2]),np.array([1.0,1.2]),'k--')
-# # plt.axhline(y=0.0,color='k',linestyle='-',linewidth=0.5)
-# # plt.axvline(x=0.0,color='k',linestyle='-',linewidth=0.5)
-# plt.plot(xs[tr][:,0],xs[tr][:,1],'k',alpha=0.8,label="true")
-# plt.plot(q_x[:,0],q_x[:,1],'b--',alpha=0.8,label="inferred")
-# plt.legend()
-# plt.xlabel('x1')
-# plt.ylabel('x2')
-# plt.xlim((-0.2,1.2))
-# plt.ylim((-0.2,1.2))
-# sns.despine()
-# plt.title('continuous latents')
-# plt.tight_layout()
