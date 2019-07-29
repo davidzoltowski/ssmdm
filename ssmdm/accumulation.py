@@ -13,7 +13,8 @@ from ssm.observations import Observations, AutoRegressiveDiagonalNoiseObservatio
 from ssm.transitions import Transitions, RecurrentTransitions, RecurrentOnlyTransitions
 from ssm.init_state_distns import InitialStateDistribution
 from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
-from ssm.preprocessing import factor_analysis_with_imputation
+from ssm.preprocessing import factor_analysis_with_imputation, interpolate_data, pca_with_imputation
+
 import ssm.stats as stats
 import copy
 
@@ -165,7 +166,7 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         # set input Accumulation params, one for each dimension
         # They only differ in their input
         self._betas = np.ones(D,)
-        self.Vs[0] = self._betas*np.eye(D)       # ramp
+        self.Vs[0] = self._betas*np.eye(D,M)       # ramp
         for d in range(1,K):
             self.Vs[d] *= np.zeros((D,M))
 
@@ -196,9 +197,9 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         else:
             self._betas, self.accum_log_sigmasq = value
 
-        K, D = self.K, self.D
+        K, D, M = self.K, self.D, self.M
         # update V
-        mask = np.vstack((np.eye(D)[None,:,:], np.zeros((K-1,D,D))))
+        mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
         self.Vs = self._betas * mask
 
         # update sigma
@@ -229,10 +230,72 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
 
+class AccumulationGLMObservations(AutoRegressiveDiagonalNoiseObservations):
+    def __init__(self, K, D, M, lags=1):
+        super(AccumulationGLMObservations, self).__init__(K, D, M)
+
+        # diagonal dynamics for each state
+        # only learn dynamics for accumulation state
+        a_diag=np.ones((D,1))
+        self._a_diag = a_diag
+        mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
+        mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
+        self._As = self._a_diag*mask1 + mask2
+
+        # set input Accumulation params, one for each dimension
+        # They only differ in their input
+        self._V0 = np.zeros((D,M))
+        self.Vs[0] = self._V0       # ramp
+        for d in range(1,K):
+            self.Vs[d] *= np.zeros((D,M))
+
+        # set noise variances
+        self.accum_log_sigmasq = np.log(1e-3)*np.ones(D,)
+        mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
+        mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
+        self.bound_variance = 1e-4
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
+
+        # Set the remaining parameters to fixed values
+        self.bs = np.zeros((K, D))
+        self.mu_init = np.zeros((K, D))
+        self._log_sigmasq_init = np.log(.001 * np.ones((K, D)))
+
+    @property
+    def params(self):
+        params = self._V0, self.accum_log_sigmasq, self._a_diag
+        return params
+
+    @params.setter
+    def params(self, value):
+        self._V0, self.accum_log_sigmasq, self._a_diag = value
+
+        K, D, M = self.K, self.D, self.M
+
+        # Update V
+        self.Vs = np.vstack((self._V0*np.ones((1,D,M)), np.zeros((K-1,D,M))))
+
+        # update sigma
+        mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
+        mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
+
+        # update A
+        mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
+        mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
+        self._As = self._a_diag*mask1 + mask2
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
+
 class Accumulation(HMM):
     def __init__(self, K, D, *, M,
                 transitions="race",
                 transition_kwargs=None,
+                observations="acc",
                 observation_kwargs=None,
                 **kwargs):
 
@@ -247,8 +310,11 @@ class Accumulation(HMM):
         transition_kwargs = transition_kwargs or {}
         transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
 
+        observation_classes = dict(
+            acc=AccumulationObservations,
+            accglm=AccumulationGLMObservations)
         observation_kwargs = observation_kwargs or {}
-        observation_distn = AccumulationObservations(K, D, M=M, **observation_kwargs)
+        observation_distn = observation_classes[observations](K, D, M=M, **observation_kwargs)
 
         super().__init__(K, D, M=M,
                             init_state_distn=init_state_distn,
@@ -330,6 +396,90 @@ class AccumulationPoissonEmissions(PoissonEmissions):
     @params.setter
     def params(self, value):
         self._Cs, self.ds = value
+
+    def invert(self, data, input=None, mask=None, tag=None, clip=np.array([0.0,1.0])):
+#         yhat = self.link(np.clip(data, .1, np.inf))
+        yhat = smooth(data,20)
+        xhat = self.link(np.clip(yhat, 0.01, np.inf))
+        xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
+        num_pad = 10
+        xhat = smooth(np.concatenate((np.zeros((num_pad,self.D)),xhat)),10)[num_pad:,:]
+        xhat = np.clip(xhat, -0.25, 1.5)
+
+        if np.abs(xhat[0]).any()>1.0:
+                xhat[0] = 0.2*npr.randn(1,self.D)
+        return xhat
+
+    # @ensure_args_are_lists
+    def initialize(self, base_model, datas, inputs=None, masks=None, tags=None,
+                   emission_optimizer="bfgs", num_optimizer_iters=1000):
+        print("Initializing Emissions parameters...")
+
+        datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
+
+        Td = sum([data.shape[0] for data in datas])
+        xs = [base_model.sample(T=data.shape[0],input=input)[1] for data, input in zip(datas, inputs)]
+        def _objective(params, itr):
+            self.params = params
+            obj = 0
+            obj += self.log_prior()
+            for data, input, mask, tag, x in \
+                zip(datas, inputs, masks, tags, xs):
+                obj += np.sum(self.log_likelihoods(data, input, mask, tag, x))
+            return -obj / Td
+
+        # Optimize emissions log-likelihood
+        optimizer = dict(bfgs=bfgs, lbfgs=lbfgs)[emission_optimizer]
+        self.params = \
+            optimizer(_objective,
+                      self.params,
+                      num_iters=num_optimizer_iters,
+                      full_output=False)
+
+
+class RampStepPoissonEmissions(PoissonEmissions):
+    def __init__(self, N, K, D, M=0, single_subspace=False, link="softplus", bin_size=1.0):
+        super(RampStepPoissonEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace, link=link, bin_size=bin_size)
+        # Make sure the input matrix Fs is set to zero and never updated
+        self.Fs *= 0
+        self.C = self._Cs[0]
+        self._Cs = self.C * np.ones((K,N,D))
+
+    # Construct an emissions model
+    @property
+    def params(self):
+        return self., self.ds
+
+    @params.setter
+    def params(self, value):
+        self.C, self.ds = value
+        self._Cs = self.C * np.ones((self.K,self.N,self.D))
+
+    def _invert(self, data, input=None, mask=None, tag=None):
+        """
+        Approximate invert the linear emission model with the pseudoinverse
+
+        y = Cx + d + noise; C orthogonal.
+        xhat = (C^T C)^{-1} C^T (y-d)
+        """
+        # assert self.single_subspace, "Can only invert with a single emission model"
+
+        C, F, d = self.Cs[0], self.Fs[0], self.ds[0]
+        C_pseudoinv = np.linalg.solve(C.T.dot(C), C.T).T
+
+        # Account for the bias
+        bias = input.dot(F.T) + d
+
+        if not np.all(mask):
+            data = interpolate_data(data, mask)
+            # We would like to find the PCA coordinates in the face of missing data
+            # To do so, alternate between running PCA and imputing the missing entries
+            for itr in range(25):
+                mu = (data - bias).dot(C_pseudoinv)
+                data[:, ~mask[0]] = (mu.dot(C.T) + bias)[:, ~mask[0]]
+
+        # Project data to get the mean
+        return (data - bias).dot(C_pseudoinv)
 
     def invert(self, data, input=None, mask=None, tag=None, clip=np.array([0.0,1.0])):
 #         yhat = self.link(np.clip(data, .1, np.inf))

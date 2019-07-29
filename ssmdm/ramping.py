@@ -58,14 +58,14 @@ class RampingTransitions(RecurrentOnlyTransitions):
 
 
 class RampingHardTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=50):
+    def __init__(self, K, D, M=0, scale=500):
         assert K == 2
         assert D == 1
         # assert M == 1
         super(RampingHardTransitions, self).__init__(K, D, M)
 
         # Parameters linking past observations to state distribution
-        self.log_Ps = np.array([[0, -scale], [-50, 50]])
+        self.log_Ps = np.array([[0, -scale], [-scale, scale]])
         self.Ws = np.zeros((K, M))
         self.Rs = np.array([0, scale]).reshape((K, D))
 
@@ -97,7 +97,7 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         self.x0 = x0 # mu init
 
         # and the noise variances, which are initialized in the AR constructor
-        self.base_var=1e-8
+        self.base_var=1e-5
         # self._log_sigmasq[0] = np.log(self.base_var) + self.log_sigma_scale
         # self._log_sigmasq[1] = np.log(self.base_var)
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
@@ -138,11 +138,12 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
     def log_prior(self):
         beta_mean = np.zeros(np.shape(self.beta)[0])
         beta_cov = (0.1**2)*np.eye(np.shape(self.beta)[0])
+        dyn_var = np.exp(self.log_sigma_scale)
         alpha = 1.1 # 0.02
         beta = 1e-3 # 0.02
         return np.sum(stats.multivariate_normal_logpdf(np.array([self.beta]), beta_mean, beta_cov)) \
                 + np.sum(-0.5 * (self.x0 - 0.5)**2 / 1.0) \
-                + alpha*np.log(beta) - gammaln(alpha) - (alpha+1)*np.log(1e-3) - beta/1e-3
+                + alpha*np.log(beta) - gammaln(alpha) - (alpha+1)*np.log(dyn_var) - beta/dyn_var
 
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
@@ -180,7 +181,7 @@ class RampingEmissions(PoissonEmissions):
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
         num_pad = 10
         xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
-        xhat[xhat > 1.05] = 1.05
+        xhat[xhat > 0.99] = 0.99
         if np.abs(xhat[0])>1.0:
                 xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat

@@ -12,7 +12,6 @@ sns.set_style("ticks")
 sns.set_context("talk")
 from ssmdm.misc import smooth, generate_clicks, generate_clicks_D
 from ssm.util import softplus
-# npr.seed(12345)
 npr.seed(1)
 
 # 1D Accumulator with Poisson observations
@@ -27,9 +26,6 @@ latent_acc = LatentAccumulation(N, K, D, M=M,
 								emission_kwargs={"bin_size":bin_size})
 latent_acc.dynamics.Vs[0] = 0.9*np.ones((D,))
 latent_acc.dynamics._log_sigmasq[0] = np.log(5e-4)*np.ones((D,))
-
-# AR-HMM with ND race accumulator observations
-# acc = Accumulation(K, D, M=M)
 latent_acc.emissions.Cs[0] = 1 * npr.randn(N,D) + npr.choice([-20,20],(N,D))
 latent_acc.emissions.ds[0] = 30 + 3.0 * npr.randn(N)
 
