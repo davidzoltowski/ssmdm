@@ -31,7 +31,7 @@ latent_acc.emissions.ds[0] = 30 + 3.0 * npr.randn(N)
 T = 100 # number of time bins
 trial_time = 1.0 # trial length in seconds
 dt = 0.01 # bin size in seconds
-N_samples = 400
+N_samples = 200
 
 # input statistics
 total_rate = 40 # the sum of the right and left poisson process rates is 40
@@ -233,3 +233,51 @@ plt.tight_layout()
 # plt.ylim((-0.2,1.2))
 # sns.despine()
 # plt.tight_layout()
+
+tr+=1
+q_x = q_lem.mean_continuous_states[tr]
+plt.ion()
+plt.figure()
+plt.plot(np.array([-0.2,1.0]),np.array([1.0,1.0]),'k--')
+plt.plot(np.array([1.0,1.0]),np.array([-0.2,1.0]),'k--')
+plt.plot(np.array([1.0,1.2]),np.array([1.0,1.2]),'k--')
+# plt.axhline(y=0.0,color='k',linestyle='-',linewidth=0.5)
+# plt.axvline(x=0.0,color='k',linestyle='-',linewidth=0.5)
+plt.plot(xs[tr][:,0],xs[tr][:,1],'k',alpha=0.8,label="true")
+plt.plot(q_x[:,0],q_x[:,1],'b--',alpha=0.8,label="inferred")
+plt.legend()
+plt.xlabel('x1')
+plt.ylabel('x2')
+plt.xlim((-0.2,1.2))
+plt.ylim((-0.2,1.2))
+sns.despine()
+plt.title('continuous latents')
+plt.tight_layout()
+
+
+tr+=1
+q_x = q_lem.mean_continuous_states[tr]
+f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]})
+q_x = q_lem.mean_continuous_states[tr]
+a0.plot(np.array([-1,101]),np.array([1.0,1.0]),'k--',label=None)
+a0.plot(xs[tr][:,0],'k',alpha=0.8,label="true")
+a0.plot(xs[tr][:,1],'k',alpha=0.8,label=None)
+a0.plot(q_x[:,0],'r--',alpha=0.8,label="inferred")
+a0.plot(q_x[:,1],'b--',alpha=0.8,label=None)
+a0.plot(0.1*us[tr][:,0],'r', label="input 1")
+a0.plot(0.1*us[tr][:,1],'b', label="input 2")
+a0.legend()
+a0.set_ylabel('x')
+# a0.set_ylabel('x2')
+a0.set_xlim([-1,101])
+a0.set_ylim((-0.2,1.2))
+sns.despine()
+# a1.title('continuous latents')
+for n in range(10):
+	a1.eventplot(np.where(ys[tr][:,n]>0)[0], linelengths=0.5, lineoffsets=1+n)
+sns.despine()
+a1.set_xlabel("time (t)")
+a1.set_ylabel("y")
+a1.set_yticks([])
+a1.set_xlim([-1,101])
+plt.tight_layout()

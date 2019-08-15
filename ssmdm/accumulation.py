@@ -448,7 +448,7 @@ class RampStepPoissonEmissions(PoissonEmissions):
     # Construct an emissions model
     @property
     def params(self):
-        return self., self.ds
+        return self.C, self.ds
 
     @params.setter
     def params(self, value):
@@ -496,7 +496,7 @@ class RampStepPoissonEmissions(PoissonEmissions):
 
     # @ensure_args_are_lists
     def initialize(self, base_model, datas, inputs=None, masks=None, tags=None,
-                   emission_optimizer="bfgs", num_optimizer_iters=1000):
+                   emission_optimizer="bfgs", num_optimizer_iters=50):
         print("Initializing Emissions parameters...")
 
         datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
@@ -583,7 +583,6 @@ class LatentAccumulation(SLDS):
                                   datas, inputs, masks, tags)
                                   # num_optimizer_iters=num_optimizer_iters)
         # betas = betas + 0.01*npr.randn()
-        # log_sigma_scale = np.log(5 + 10*npr.rand())*np.ones(2,)
         # self.dynamics.params = (betas, log_sigma_scale)
         # print("Done.")
 

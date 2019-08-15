@@ -83,6 +83,32 @@ class RampingHardTransitions(RecurrentTransitions):
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
 
+class RampingLowerBoundHardTransitions(RecurrentTransitions):
+    def __init__(self, K, D, M=0, scale=500):
+        assert K == 3
+        assert D == 1
+        # assert M == 1
+        super(RampingLowerBoundHardTransitions, self).__init__(K, D, M)
+
+        # Parameters linking past observations to state distribution
+        self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
+        self.log_Ps[2,0] = 0.0
+        self.Ws = np.zeros((K, M))
+        self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
+
+    @property
+    def params(self):
+        return ()
+
+    @params.setter
+    def params(self, value):
+        pass
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        pass
 
 class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D=1, M=5, lags=1, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.4):
@@ -249,6 +275,22 @@ class RampingHard(SLDS):
         init_state_distn = InitialStateDistribution(K, D, M=M)
         init_state_distn.log_pi0 = np.log([0.999, 0.001])
         transition_distn = RampingHardTransitions(K, D, M=M)
+        dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
+        emission_distn = RampingEmissions(N, K, D, M=M, single_subspace=True, link=link, bin_size=bin_size)
+
+        super().__init__(N, K=K, D=D, M=M, init_state_distn=init_state_distn,
+                                transitions=transition_distn,
+                                dynamics=dynamics_distn,
+                                emissions=emission_distn)
+
+class RampingLowerHard(SLDS):
+    def __init__(self, N, K=3, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.4, link="softplus", bin_size=1.0):
+
+        K, D, M = 3, 1, 5
+
+        init_state_distn = InitialStateDistribution(K, D, M=M)
+        init_state_distn.log_pi0 = np.log([0.999, 0.001])
+        transition_distn = RampingLowerBoundHardTransitions(K, D, M=M)
         dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
         emission_distn = RampingEmissions(N, K, D, M=M, single_subspace=True, link=link, bin_size=bin_size)
 

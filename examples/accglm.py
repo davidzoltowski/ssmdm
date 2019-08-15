@@ -23,13 +23,13 @@ K = 3 		# number of discrete states
 M = 10 		# number of input dimensions
 acc = Accumulation(K, D, M=M, transitions="ddmhard", observations="accglm")
 V0 = np.zeros((D,M))
-V0[0,-1] = 0.075
+V0[0,-1] = 0.1
 acc.observations.params = (V0, acc.observations.params[1], acc.observations.params[2])
 acc.observations._log_sigmasq[0] = np.log(1e-3)*np.ones((D,))
-acc.observations._log_sigmasq[1] = np.log(1e-3)*np.ones((D,))
-acc.observations._log_sigmasq[2] = np.log(1e-3)*np.ones((D,))
-acc.observations.As[1] = 0.985
-acc.observations.As[2] = 0.985
+acc.observations._log_sigmasq[1] = np.log(5e-4)*np.ones((D,))
+acc.observations._log_sigmasq[2] = np.log(5e-4)*np.ones((D,))
+# acc.observations.As[1] = 0.99
+# acc.observations.As[2] = 0.99
 
 
 
@@ -50,7 +50,8 @@ xs = []
 for smpl in range(N_samples):
 
     # randomly draw right and left rates
-    rate_r = np.random.randint(0,total_rate+1)
+    # rate_r = np.random.randint(0,total_rate+1)
+    rate_r = npr.choice([10,30])
     rate_l = total_rate - rate_r
     rates = [rate_r,rate_l]
 
@@ -59,8 +60,8 @@ for smpl in range(N_samples):
 
     # input is sum of u_r and u_l
     u = (1.0*np.array(u[1] - u[0]).T).reshape((T,1))
-    u[-50:,:] *= 0.0
-    
+    # u[-50:,:] *= 0.0
+
     # first column
     c = np.vstack((np.zeros((M-1,1)),u[:-M+1,:]))
     # last row
@@ -84,6 +85,21 @@ plt.plot(xs[tr],'b')
 plt.xlabel("time")
 plt.ylabel("x")
 plt.tight_layout()
+
+plt.figure()
+for tr in range(10):
+	x_trial = xs[tr]
+	if np.max(x_trial) > 1.0:
+		t0 = np.where(x_trial>1)[0][0]
+		plt.plot(np.arange(0,t0+1),x_trial[:t0+1],'k',alpha=0.75)
+		plt.plot(np.arange(t0,100),x_trial[t0:],'r',alpha=0.75)
+	elif np.min(x_trial) < -1.0:
+		t0 = np.where(x_trial<-1)[0][0]
+		plt.plot(np.arange(0,t0+1),x_trial[:t0+1],'k',alpha=0.75)
+		plt.plot(np.arange(t0,100),x_trial[t0:],'b',alpha=0.75)
+	else:
+		plt.plot(x_trial,'k',alpha=0.75)
+
 
 test_acc = Accumulation(K, D, M=M, transitions="ddmhard", observations="accglm")
 test_acc.fit(xs, inputs=inputs)

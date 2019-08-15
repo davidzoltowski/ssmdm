@@ -1,7 +1,7 @@
 import autograd.numpy as np
 import autograd.numpy.random as npr
 
-from ssmdm.ramping import ObservedRamping, Ramping, simulate_ramping, RampingHard
+from ssmdm.ramping import ObservedRamping, Ramping, simulate_ramping, RampingHard, RampingLowerHard
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ N = 5
 beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) #+ 0.01*npr.randn(5)
 log_sigma_scale = np.log(1e-3)
 x0 = 0.5
-latent_ddm = RampingHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
+latent_ddm = RampingLowerHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
 latent_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
 print("True C: ", np.mean(latent_ddm.emissions.Cs[0]))
 ys = []
