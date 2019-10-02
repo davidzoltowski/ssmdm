@@ -31,7 +31,7 @@ latent_acc.emissions.Cs[0] = 4 * npr.randn(N,D) + npr.choice([-15,15],(N,D))
 latent_acc.emissions.ds[0] = 30 + 5 * npr.randn(N)
 
 # loop through number of runs
-num_runs = 2
+num_runs = 1
 init_params, final_params = [], []
 q_params, elbos = [], []
 all_xs, all_ys, all_us, all_zs, = [], [], [], []
@@ -43,7 +43,7 @@ for run in range(num_runs):
 	T = 100 # number of time bins
 	trial_time = 1.0 # trial length in seconds
 	dt = 0.01 # bin size in seconds
-	N_samples = 10
+	N_samples = 200
 
 	# input statistics
 	total_rate = 40 # the sum of the right and left poisson process rates is 40
@@ -83,7 +83,8 @@ for run in range(num_runs):
 	test_acc = LatentAccumulation(N, K, D, M=M, transitions="ddmhard",
 								  emissions="poisson", emission_kwargs={"bin_size":bin_size})
 	beta0 = np.array([0.0 + 0.1*npr.rand()])
-	log_sigmasq0 = np.log([5e-4 + 4.5e-3*npr.rand()])
+	# log_sigmasq0 = np.log([5e-4 + 4.5e-3*npr.rand()])
+	log_sigmasq0 = np.log([3e-3])
 	A0 = np.ones((D,D))
 	test_acc.dynamics.params = (beta0, log_sigmasq0, A0)
 	test_acc.initialize(ys, inputs=us)
@@ -92,15 +93,15 @@ for run in range(num_runs):
 	# fit
 	q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior="structured_meanfield",
-								  num_iters=2, alpha=0.5, initialize=False,
-								  variational_posterior_kwargs={"initial_variance":1e-4})
+								  num_iters=10, alpha=0.5, initialize=False,
+								  variational_posterior_kwargs={"initial_variance":1e-5})
 
 	print("Final params:", test_acc.params)
 	final_params += [test_acc.params]
 	q_params += [q_lem.params]
 	elbos += [q_elbos]
 
-np.savez("fit_1Daccumulator_results_200.npz", true_params=latent_acc.params,
-	final_params=final_params, init_params=init_params,
-	q_params=q_params, elbos=elbos, N_samples=N_samples,
-	all_ys=all_ys, all_xs=all_xs, all_us=all_us, all_zs=all_zs)
+# np.savez("fit_1Daccumulator_results_200.npz", true_params=latent_acc.params,
+# 	final_params=final_params, init_params=init_params,
+# 	q_params=q_params, elbos=elbos, N_samples=N_samples,
+# 	all_ys=all_ys, all_xs=all_xs, all_us=all_us, all_zs=all_zs)

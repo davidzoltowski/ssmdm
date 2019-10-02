@@ -10,17 +10,20 @@ sns.set_style("white")
 sns.set_context("talk")
 from ssmdm.misc import smooth
 from ssm.util import one_hot, softplus
-npr.seed(123)
+npr.seed(2)
 
 # setup parameters
-numTrials = 375
+# numTrials = 375
+numTrials = 200
 bin_size = 0.01
 # bin_size = 1.0
-N = 5
-beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) #+ 0.01*npr.randn(5)
-log_sigma_scale = np.log(1e-3)
+N = 25
+# beta = np.array([-0.005,-0.0025,0.0,0.01,0.015]) #+ 0.01*npr.randn(5)
+beta = np.array([-0.01,-0.0025,0.0,0.01,0.015]) #+ 0.01*npr.randn(5)
+log_sigma_scale = np.log(5e-4)
 x0 = 0.5
-latent_ddm = RampingLowerHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
+latent_ddm = RampingHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
+# latent_ddm = RampingLowerHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
 latent_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
 print("True C: ", np.mean(latent_ddm.emissions.Cs[0]))
 ys = []
@@ -29,6 +32,7 @@ zs = []
 us = []
 cohs = []
 numCoh = 5
+M = 5
 # sample from model
 for tr in range(numTrials):
 
@@ -50,29 +54,53 @@ for tr in range(numTrials):
 
 cohs = np.array(cohs)
 
+sns.set_style("ticks")
 plt.ion()
 plt.figure()
 colors=['r','m','k','c','b']
-for tr in range(numTrials):
+# for tr in range(numTrials):
+for tr in np.arange(1,50):
 	color=colors[cohs[tr]]
-	if cohs[tr] == 4:
-		plt.plot(xs[tr],color,alpha=0.5)
+	if cohs[tr] == 4 or cohs[tr] == 0:
+		z_switch = np.where(np.abs(zs[tr])>0)[0]
+		z_switch = z_switch[0] if z_switch.shape[0] > 0 else xs[tr].shape[0]
+		plt.plot(np.arange(0,z_switch),xs[tr][:z_switch],'k',alpha=0.75)
+		plt.plot(np.arange(z_switch-1,xs[tr].shape[0]),xs[tr][z_switch-1:],color,alpha=0.75)
+	# plt.plot(xs[tr],color,alpha=0.6)
+plt.xlabel("time")
+plt.ylabel("x")
+sns.despine()
+plt.tight_layout()
+
+sns.set_style("ticks")
+plt.figure()
+plt.plot([0,100],[0,0],'k',linewidth=1,alpha=0.75)
+for tr in np.arange(5,26):
+	color=colors[cohs[tr]]
+	if cohs[tr] == 4 or cohs[tr] == 0:
+		y_trial = latent_ddm.emissions.mean(latent_ddm.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:])[:,0] / bin_size
+	# plt.plot(latent_ddm.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:][:,0],alpha=0.75)
+		plt.plot(y_trial,alpha=0.75,color=color)
+plt.ylim([-1.0,45])
+plt.xlabel("time")
+plt.ylabel("x")
+sns.despine()
+plt.tight_layout()
+
 
 # initialize
-beta = np.array([-0.01,-0.005,0.0,0.01,0.02]) + 0.001*npr.randn(5)
+beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) + 0.01*npr.randn(5)
 # beta = np.array([-0.01,-0.005,0.0,0.001,0.001]) + 0.001*npr.randn(5)
-x0 = 0.5 + 0.05 * npr.randn(1)
 log_sigma_scale = np.log(5e-4+1.5e-3*npr.rand())
-# beta = beta
-# x0 = x0
-# log_sigma_scale = log_sigma_scale
+# log_sigma_scale = np.log(3e-3)
 
 def initialize_ramp(ys,cohs, bin_size):
 	coh5 = np.where(cohs==4)[0]
-	y_end = np.array([y[-3:-1] for y in ys])
+	# coh5 = np.concatenate((np.where(cohs==4)[0],np.where(cohs==3)[0]))
+	y_end = np.array([y[-10:] for y in ys])
 	y_end_5 = y_end[coh5]
 	C = np.mean(y_end_5,axis=(0,1)) / bin_size
-	y0_mean = np.mean([y[0] for y in ys],axis=0) / bin_size
+	y0_mean = np.mean([y[0:2] for y in ys],axis=0) / bin_size
 	x0 = np.mean(np.divide(y0_mean, C))
 	return C, x0
 
@@ -87,70 +115,38 @@ test_ddm.emissions.Cs[0] =  C.reshape((N,1))
 import copy
 init_params = copy.deepcopy(test_ddm.params)
 
-q_lem_elbos, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+# initialize variational posterior
+init_var = 1e-5
+_, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior="structured_meanfield",
-								  variational_posterior_kwargs={"initial_variance":1e-5},
-								  num_iters=5, initialize=False)
+								  variational_posterior_kwargs={"initial_variance":init_var},
+								  num_iters=0, initialize=False)
+# for tr in range(numTrials):
+# 	q_lem.params[tr]["h"] = xs[tr] / init_var
 q_lem_elbos, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
-								  variational_posterior_kwargs={"initial_variance":1e-5},
-								  num_iters=5, initialize=False)
-
-num_iters = 10
-Cs, dynamics_var, q_elbos = [], [], []
-x_mean, x_sample_mean, qx_diff = [], [], []
-
-# current_mean = np.vstack(q_laplace_em.mean_continuous_states)
-# x_mean.append(np.mean(current_mean))
-# x_sample_mean.append(np.mean(np.vstack(q_laplace_em.sample_continuous_states())))
-# dynamics_var.append(test_ddm.dynamics.Sigmas[0][0][0])
-# Cs.append(test_ddm.emissions.Cs[0][0])
-
-# print("Initial C: ", test_ddm.emissions.Cs[0][0])
-# print("True x mean: ", np.mean(np.vstack(xs)))
-# print("X mean, X_sample mean:", x_mean[-1], x_sample_mean[-1])
-# params = []
-# params.append(test_ddm.params)
-# for iter in range(num_iters):
-# 	print("Iteration: ", iter)
-# 	q_lem_elbos = test_ddm.fit(q_laplace_em, ys, inputs=us, method="laplace_em", num_iters=1, initialize=False,
-# 							   num_samples=1, alpha=0.5)
-# 	q_elbos.append(q_lem_elbos[1])
-# 	params.append(test_ddm.params)
-# 	dynamics_var.append(test_ddm.dynamics.Sigmas[0][0][0])
-# 	new_mean = np.vstack(q_laplace_em.mean_continuous_states)
-# 	qx_diff.append(np.linalg.norm(current_mean - new_mean))
-# 	current_mean = new_mean
-# 	x_mean.append(np.mean(current_mean))
-# 	x_sample_mean.append(np.mean(np.vstack(q_laplace_em.sample_continuous_states())))
-# 	Cs.append(test_ddm.emissions.Cs[0][0])
-# 	# print("Variance: ", dynamics_var[-1])
-# 	# print("C: ", np.mean(test_ddm.emissions.Cs[0][0]))
-# 	print("Params: ", params[-1])
-# 	print("X mean, X_sample mean:", x_mean[-1], x_sample_mean[-1])
-
-plt.figure()
-plt.subplot(211)
-# plt.title("Softplus, Binsize=0.01, N=1, Nsamp=5")
-plt.plot(np.arange(1,len(q_elbos)+1),q_elbos)
-plt.ylabel("ELBO")
-# plt.subplot(312)
-# plt.axhline(np.mean(latent_ddm.emissions.Cs[0]),color='k')
-# plt.plot(Cs)
-# # plt.axhline(1e-4,color='r')
-# plt.ylabel("C")
-plt.subplot(212)
-plt.axhline(np.mean(np.vstack(xs)),color='k')
-plt.plot(x_mean)
-plt.ylabel("mean q(x)")
-plt.xlabel("iteration")
-plt.legend(["true","inferred"])
-plt.tight_layout()
-# plt.savefig("ramping_qx_fix_params_ns1_1e7.png")
+								  alpha=0.5,
+								  num_iters=5, initialize=False, num_samples=1)
+q_lem_elbos2, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+								  variational_posterior=q_lem,
+								  alpha=0.5,
+								  num_iters=5, initialize=False, num_samples=1)
+q_lem_elbos3, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+								  variational_posterior=q_lem,
+								  alpha=0.5,
+								  num_iters=10, initialize=False)
+q_lem_elbos4, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+								  variational_posterior=q_lem,
+								  alpha=0.5,
+								  num_iters=10, initialize=False)
+q_lem_elbos6, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+								  variational_posterior=q_lem,
+								  alpha=0.5,
+								  num_iters=25, initialize=False)
 
 plt.ion()
 plt.figure()
-plt.plot(q_elbos)
+plt.plot(q_lem_elbos[1:])
 plt.plot()
 plt.ylabel("ELBO")
 plt.xlabel("iteration")
@@ -302,9 +298,77 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 	plt.tight_layout()
 	plt.show()
 
-tr = 0
-tr += 1
-q_z = test_ddm.most_likely_states(q_laplace_em.mean_continuous_states[tr], ys[tr])
-plt.figure()
-plt.plot(zs[tr],'k')
-plt.plot(q_z,'r--')
+# tr = 0
+# tr += 1
+# q_z = test_ddm.most_likely_states(q_laplace_em.mean_continuous_states[tr], ys[tr])
+# plt.figure()
+# plt.plot(zs[tr],'k')
+# plt.plot(q_z,'r--')
+
+T = 100
+num_sims = 1000
+from ssm.util import one_hot
+sim_zs, sim_xs, sim_ys, sim_us, sim_cohs = [], [], [], [], []
+numCoh = np.copy(M)
+for iter in range(num_sims):
+
+	coh = npr.randint(numCoh)
+	u_tr = one_hot(coh,numCoh)
+	tr_length = np.copy(T)
+	u = u_tr * np.ones((tr_length,1))
+
+	# sample from Observed ramping and them map to observations? fit that instead???
+	z, x, y = test_ddm.sample(T, input=u)
+
+	sim_zs.append(z)
+	sim_xs.append(x)
+	y = test_ddm.emissions.mean(test_ddm.emissions.forward(x, input=u, tag=None))
+	sim_ys.append(y)
+	sim_us.append(u)
+	sim_cohs.append(coh)
+
+# tr = 0
+# tr+=1
+# print(sim_us[tr][0])
+# plt.figure()
+# plt.plot(sim_xs[tr])
+
+####
+def plot_psth(ys,us,linestyle='-'):
+
+	num_coh = np.shape(us[0])[0]
+	# T = 1000
+	T = max([y.shape[0] for y in ys])
+
+	psth = np.zeros((num_coh,T))
+	psth_count = np.zeros((num_coh,T))
+	numTrials = len(ys)
+
+	for tr in range(numTrials):
+
+		u_trial = np.where(us[tr][0]==1)[0][0]
+		y_trial = ys[tr]
+		t_trial = np.shape(y_trial)[0]
+
+		psth[u_trial,0:t_trial] += y_trial.flatten()
+		psth_count[u_trial,0:t_trial] += 1.0
+
+	psth = psth / psth_count
+
+	# plt.figure()
+	plt.plot(smooth(psth[0][:,None],5)/0.01,linestyle=linestyle,color=[1.0,0.0,0.0],alpha=0.8)
+	plt.plot(smooth(psth[1][:,None],5)/0.01,linestyle=linestyle,color=[1.0,0.0,0.5],alpha=0.8)
+	plt.plot(smooth(psth[2][:,None],5)/0.01,linestyle=linestyle,color=[0.0,0.0,0.0],alpha=0.8)
+	plt.plot(smooth(psth[3][:,None],5)/0.01,linestyle=linestyle,color=[0.5,0.0,1.0],alpha=0.8)
+	plt.plot(smooth(psth[4][:,None],5)/0.01,linestyle=linestyle,color=[0.0,0.0,1.0],alpha=0.8)
+	if num_coh == 6:
+		plt.plot(smooth(psth[5][:,None],5)/0.01,linestyle=linestyle,color=[0.0,0.5,1.0],alpha=0.8)
+	plt.xlabel("time bin")
+	plt.ylabel("firing rate (sp/s)")
+	plt.show()
+
+plt.ion()
+plt.figure(figsize=[6,4])
+plot_psth(ys, us)
+plot_psth(sim_ys, sim_us, '--')
+plt.tight_layout()
