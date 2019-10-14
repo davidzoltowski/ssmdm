@@ -1,7 +1,8 @@
 import autograd.numpy as np
 import autograd.numpy.random as npr
 
-from ssmdm.ramping import ObservedRamping, Ramping, simulate_ramping, RampingHard, RampingLowerHard
+# from ssmdm.ramping import ObservedRamping, Ramping, simulate_ramping, RampingHard, RampingLowerHard
+from ssmdm.ramping import Ramping
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -13,19 +14,20 @@ from ssm.util import one_hot, softplus
 npr.seed(2)
 
 # setup parameters
-# numTrials = 375
-numTrials = 200
+K = 2
+M = 5
+numTrials = 100
 bin_size = 0.01
-# bin_size = 1.0
-N = 25
-# beta = np.array([-0.005,-0.0025,0.0,0.01,0.015]) #+ 0.01*npr.randn(5)
-beta = np.array([-0.01,-0.0025,0.0,0.01,0.015]) #+ 0.01*npr.randn(5)
+N = 15
+beta = np.array([-0.01,-0.0025,0.0,0.01,0.015])
 log_sigma_scale = np.log(5e-4)
 x0 = 0.5
-latent_ddm = RampingHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
-# latent_ddm = RampingLowerHard(N, M=5, link="softplus", beta = beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
-latent_ddm.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
-print("True C: ", np.mean(latent_ddm.emissions.Cs[0]))
+latent_ramp = Ramping(N, K=K, D=1, M=M,
+					 dynamics_kwargs={
+					 "beta":beta, "log_sigma_scale":log_sigma_scale, "x0":x0},
+					 emissions_kwargs={"bin_size":bin_size})
+latent_ramp.emissions.Cs[0] = 40.0 + 3.0 * npr.randn(N,1)
+print("True C: ", np.mean(latent_ramp.emissions.Cs[0]))
 ys = []
 xs = []
 zs = []
@@ -44,7 +46,7 @@ for tr in range(numTrials):
 	T = np.shape(u)[0]
 
 	# sample from Observed ramping and them map to observations? fit that instead???
-	z, x, y = latent_ddm.sample(T, input=u)
+	z, x, y = latent_ramp.sample(T, input=u)
 
 	zs.append(z)
 	xs.append(x)
@@ -78,8 +80,22 @@ plt.plot([0,100],[0,0],'k',linewidth=1,alpha=0.75)
 for tr in np.arange(5,26):
 	color=colors[cohs[tr]]
 	if cohs[tr] == 4 or cohs[tr] == 0:
-		y_trial = latent_ddm.emissions.mean(latent_ddm.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:])[:,0] / bin_size
-	# plt.plot(latent_ddm.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:][:,0],alpha=0.75)
+		y_trial = latent_ramp.emissions.mean(latent_ramp.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:])[:,0] / bin_size
+	# plt.plot(latent_ramp.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:][:,0],alpha=0.75)
+		plt.plot(y_trial,alpha=0.75,color=color)
+plt.ylim([-1.0,45])
+plt.xlabel("time")
+plt.ylabel("x")
+sns.despine()
+plt.tight_layout()
+
+plt.figure()
+plt.plot([0,100],[0,0],'k',linewidth=1,alpha=0.75)
+for tr in np.arange(5,26):
+	color=colors[cohs[tr]]
+	if cohs[tr] == 4 or cohs[tr] == 0:
+		y_trial = latent_ramp.emissions.mean(latent_ramp.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:])[:,0] / bin_size
+	# plt.plot(latent_ramp.emissions.forward(xs[tr],input=us[tr],tag=None)[:,0,:][:,0],alpha=0.75)
 		plt.plot(y_trial,alpha=0.75,color=color)
 plt.ylim([-1.0,45])
 plt.xlabel("time")
@@ -88,11 +104,7 @@ sns.despine()
 plt.tight_layout()
 
 
-# initialize
-beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) + 0.01*npr.randn(5)
-# beta = np.array([-0.01,-0.005,0.0,0.001,0.001]) + 0.001*npr.randn(5)
-log_sigma_scale = np.log(5e-4+1.5e-3*npr.rand())
-# log_sigma_scale = np.log(3e-3)
+
 
 def initialize_ramp(ys,cohs, bin_size):
 	coh5 = np.where(cohs==4)[0]
@@ -104,42 +116,47 @@ def initialize_ramp(ys,cohs, bin_size):
 	x0 = np.mean(np.divide(y0_mean, C))
 	return C, x0
 
+
+# initialize
+beta = np.array([-0.005,-0.0025,0.0,0.01,0.02]) + 0.01*npr.randn(5)
+log_sigma_scale = np.log(5e-4+1.5e-3*npr.rand())
 C, x0 = initialize_ramp(ys, cohs, bin_size)
 
-test_ddm = RampingHard(N, M=5, link="softplus", beta=beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
-test_ddm.emissions.Cs[0] =  C.reshape((N,1))
-# test_ddm.emissions.Cs[0] =  latent_ddm.emissions.Cs[0] + 2.0 * npr.randn(N,1)
-# test_ddm.emissions.Cs[0] =  latent_ddm.emissions.Cs[0]
-# test_ddm.initialize(ys,inputs=us)
+test_ramp = Ramping(N, K=K, D=1, M=M,
+					 dynamics_kwargs={
+					 "beta":beta, "log_sigma_scale":log_sigma_scale, "x0":x0},
+					 emissions_kwargs={"bin_size":bin_size})
+# test_ramp = RampingHard(N, M=5, link="softplus", beta=beta, log_sigma_scale=log_sigma_scale, x0=x0, bin_size=bin_size)
+test_ramp.emissions.Cs[0] =  C.reshape((N,1))
 
 import copy
-init_params = copy.deepcopy(test_ddm.params)
+init_params = copy.deepcopy(test_ramp.params)
 
 # initialize variational posterior
 init_var = 1e-5
-_, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+_, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior="structured_meanfield",
 								  variational_posterior_kwargs={"initial_variance":init_var},
 								  num_iters=0, initialize=False)
 # for tr in range(numTrials):
 # 	q_lem.params[tr]["h"] = xs[tr] / init_var
-q_lem_elbos, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+q_lem_elbos, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
 								  alpha=0.5,
 								  num_iters=5, initialize=False, num_samples=1)
-q_lem_elbos2, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+q_lem_elbos2, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
 								  alpha=0.5,
 								  num_iters=5, initialize=False, num_samples=1)
-q_lem_elbos3, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+q_lem_elbos3, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
 								  alpha=0.5,
 								  num_iters=10, initialize=False)
-q_lem_elbos4, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+q_lem_elbos4, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
 								  alpha=0.5,
 								  num_iters=10, initialize=False)
-q_lem_elbos6, q_lem = test_ddm.fit(ys, inputs=us, method="laplace_em",
+q_lem_elbos6, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior=q_lem,
 								  alpha=0.5,
 								  num_iters=25, initialize=False)
@@ -153,7 +170,7 @@ plt.xlabel("iteration")
 plt.tight_layout()
 
 plt.figure()
-plt.imshow(np.concatenate( (latent_ddm.emissions.Cs[0], init_params[-1][0], test_ddm.emissions.Cs[0]),axis=1),aspect="auto")
+plt.imshow(np.concatenate( (latent_ramp.emissions.Cs[0], init_params[-1][0], test_ramp.emissions.Cs[0]),axis=1),aspect="auto")
 plt.tight_layout()
 plt.colorbar()
 
@@ -197,7 +214,7 @@ def plot_trial(q,model,ys,us,method="lem",true_xs=None,tr=0):
 	if np.shape(yhat)[1] < 6:
 		plt.subplot(122)
 		plt.plot(smooth(ys[tr],10) / bin_size,'k');
-		plt.plot(softplus(xs[tr]*latent_ddm.emissions.Cs[0]))
+		plt.plot(softplus(xs[tr]*latent_ramp.emissions.Cs[0]))
 		plt.plot(yhat / bin_size,'b');
 		plt.plot(np.array([0,np.shape(yhat)[0]]),np.array([max_rate,max_rate]))
 		plt.eventplot(np.where(ys[tr]>0)[0], linelengths=2)
@@ -224,7 +241,7 @@ def plot_trial(q,model,ys,us,method="lem",true_xs=None,tr=0):
 	plt.tight_layout()
 	plt.show()
 
-plot_trial(q_lem, test_ddm, ys, us, method="lem", true_xs=xs, tr=0)
+plot_trial(q_lem, test_ramp, ys, us, method="lem", true_xs=xs, tr=0)
 plt.show()
 
 
@@ -269,7 +286,7 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 		if np.shape(yhat)[1] < 6:
 			plt.subplot(5,2,(idx*2)+2)
 			plt.plot(smooth(ys[tr],10) / bin_size,'k');
-			plt.plot(softplus(xs[tr]*latent_ddm.emissions.Cs[0]))
+			plt.plot(softplus(xs[tr]*latent_ramp.emissions.Cs[0]))
 			plt.plot(yhat / bin_size,'b');
 			plt.plot(np.array([0,np.shape(yhat)[0]]),np.array([max_rate,max_rate]))
 			plt.eventplot(np.where(ys[tr]>0)[0], linelengths=2)
@@ -300,7 +317,7 @@ def plot_trials(q,model,ys,us,method="lem",true_xs=None):
 
 # tr = 0
 # tr += 1
-# q_z = test_ddm.most_likely_states(q_laplace_em.mean_continuous_states[tr], ys[tr])
+# q_z = test_ramp.most_likely_states(q_laplace_em.mean_continuous_states[tr], ys[tr])
 # plt.figure()
 # plt.plot(zs[tr],'k')
 # plt.plot(q_z,'r--')
@@ -318,11 +335,11 @@ for iter in range(num_sims):
 	u = u_tr * np.ones((tr_length,1))
 
 	# sample from Observed ramping and them map to observations? fit that instead???
-	z, x, y = test_ddm.sample(T, input=u)
+	z, x, y = test_ramp.sample(T, input=u)
 
 	sim_zs.append(z)
 	sim_xs.append(x)
-	y = test_ddm.emissions.mean(test_ddm.emissions.forward(x, input=u, tag=None))
+	y = test_ramp.emissions.mean(test_ramp.emissions.forward(x, input=u, tag=None))
 	sim_ys.append(y)
 	sim_us.append(u)
 	sim_cohs.append(coh)

@@ -87,23 +87,23 @@ test_acc.emissions.Cs[0] = C_init
 init_params = copy.deepcopy(test_acc.params)
 
 # init posterior
-init_var = 1e-5
+init_var = 1e-4
 _, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 						variational_posterior="structured_meanfield",
 						num_iters=0, initialize=False,
 						variational_posterior_kwargs={"initial_variance":init_var})
 q_lem_init = copy.deepcopy(q_lem)
-q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
+q_elbos2, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior=q_lem,
-							  num_iters=50, alpha=0.5, initialize=False, num_samples=5)#,
+							  num_iters=15, alpha=0.5, initialize=False, num_samples=5, parameters_update="sgd", emission_optimizer_maxiter=20)#,
 q_elbos2, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior=q_lem,
 							  num_iters=50, alpha=0.5, initialize=False, num_samples=5)#,
 model150 = copy.deepcopy(test_acc)
 q150 = copy.deepcopy(q_lem)
-q_elbos3, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
+q_elbos4, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior=q_lem,
-							  num_iters=25, alpha=0.5, initialize=False)#,
+							  num_iters=50, alpha=0.5, initialize=False)#,
 model100 = copy.deepcopy(test_acc)
 q100 = copy.deepcopy(q_lem)
 
@@ -287,3 +287,14 @@ plt.imshow(np.concatenate((d.reshape((N,1)),test_acc.emissions.ds.reshape((N,1))
 plt.xticks([0, 1], ["$d_{\\mathrm{true}}$", "$d_{\\mathrm{inf}}$"])
 plt.colorbar()
 plt.tight_layout()
+
+
+# q_x = np.copy(q_lem.mean_continuous_states)
+#
+# T_x = 10
+# x1to10 = np.vstack([x[:T_x] for x in q_x])
+# x2to11 = np.vstack([x[1:T_x+1] for x in q_x])
+# u1to11 = np.vstack([u[1:T_x+1] for u in us])
+# x_diff = x2to11 - x1to10
+# beta1 = 1.0 / np.dot(u1to11[:,0], u1to11[:,0]) * np.dot(u1to11[:,0], x_diff[:,0])
+# beta2 = 1.0 / np.dot(u1to11[:,1], u1to11[:,1]) * np.dot(u1to11[:,1], x_diff[:,1])

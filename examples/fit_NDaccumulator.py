@@ -21,7 +21,7 @@ M = 1 		# number of input dimensions
 N = 5		# number of observations
 bin_size = 0.01
 latent_acc = LatentAccumulation(N, K, D, M=M,
-								transitions="ddmhard",
+								transitions="ddm",
 								emissions="poisson",
 								emission_kwargs={"bin_size":bin_size})
 latent_acc.dynamics.Vs[0] = 0.9*np.ones((D,))
@@ -46,23 +46,15 @@ ys = []
 for smpl in range(N_samples):
 
     # randomly draw right and left rates
-    # rate_r = np.random.randint(0,total_rate+1)
-    # rate_r = 10 + np.random.randint(0,20+1)
     rate_r = npr.choice([10,30])
     rate_l = total_rate - rate_r
     rates = [rate_r,rate_l]
 
     # generate binned right and left clicks
-    # rates = [10, 10, 10]
-    # idx = int(npr.choice([0,1,2]))
-    # rates[idx] = 30
     u = generate_clicks_D(rates,T=trial_time,dt=dt)
 
     # input is sum of u_r and u_l
     u = (0.075*np.array(u[1] - u[0]).T).reshape((T,1))
-    # u = 0.075*np.array(u).T
-    # u = npr.choice([-0.05,0.05])
-    # u = u*np.ones((T,1))
     z, x, y = latent_acc.sample(T, input=u)
 
     us.append(u)
@@ -70,55 +62,9 @@ for smpl in range(N_samples):
     xs.append(x)
     ys.append(y)
 
-# plt.ion()
-# plt.figure()
-# for tr in range(N_samples):
-# 	plt.plot(xs[tr],'k',alpha=0.5)
-
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[10],'r',label="trial 1")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# # plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr1.png")
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[28],'b',label="trial 2")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# # plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr2.png")
-#
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([0,100]),np.array([1,1]),'k--',linewidth=1.0)
-# plt.plot(np.array([0,100]),np.array([-1,-1]),'k--',linewidth=1.0)
-# plt.plot(xs[10],'r',label="trial 1")
-# plt.plot(xs[28],'b',label="trial 2")
-# plt.ylim([-1.2,1.2])
-# plt.xlim([-1,101])
-# plt.xlabel("t")
-# plt.ylabel("x")
-# plt.tight_layout()
-# sns.despine()
-# plt.savefig("/Users/davidzoltowski/Desktop/a2b_rslds_tr12.png")
-
-
-
 # fit SLDS model to ys
 # initialize
-test_acc = LatentAccumulation(N, K, D, M=M, transitions="ddmhard",
+test_acc = LatentAccumulation(N, K, D, M=M, transitions="ddm",
 							  emissions="poisson", emission_kwargs={"bin_size":bin_size})
 test_acc.initialize(ys, inputs=us)
 init_params = copy.deepcopy(test_acc.params)
@@ -126,10 +72,7 @@ init_params = copy.deepcopy(test_acc.params)
 # fit
 q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 							  variational_posterior="structured_meanfield",
-							  num_iters=20, alpha=0.5, initialize=False)
-q_elbos2, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
-							  variational_posterior=q_lem,
-							  num_iters=10, alpha=0.5, initialize=False)
+							  num_iters=25, alpha=0.5, initialize=False)
 
 plt.figure()
 plt.plot(q_elbos[1:])
@@ -152,15 +95,6 @@ def plot_sim_results(tr=0):
     for d in range(np.shape(q_x)[1]):
 	    plt.plot(xs[tr],'k', label="true" if d==0 else None)
 	    plt.plot(q_x,'r--',label="inferred" if d==0 else None)
-    # plt.plot(xs[tr],'k',label="true")
-    # plt.plot(q_x,'r--',label="inferred")
-    # plt.plot(xs[tr][:,0],'r', label="true")
-    # plt.plot(xs[tr][:,1],'b')
-    # # plt.plot(xs[tr][:,2],'k')
-    # # plt.plot(q_x,'r--',label="inferred")
-    # plt.plot(q_x[:,0],'m--', label="inferred")
-    # plt.plot(q_x[:,1],'c--')
-    # plt.plot(q_x[:,2],'g--')
     plt.xlim(xlim)
     plt.xlabel('time bin')
     plt.ylabel('x')
@@ -230,24 +164,3 @@ def plot_sim_results(tr=0):
     plt.tight_layout()
 
 plot_sim_results(tr=0)
-
-# tr=0
-# tr+=1
-# q_x = q_lem.mean_continuous_states[tr]
-# plt.ion()
-# plt.figure()
-# plt.plot(np.array([-0.2,1.0]),np.array([1.0,1.0]),'k--')
-# plt.plot(np.array([1.0,1.0]),np.array([-0.2,1.0]),'k--')
-# plt.plot(np.array([1.0,1.2]),np.array([1.0,1.2]),'k--')
-# # plt.axhline(y=0.0,color='k',linestyle='-',linewidth=0.5)
-# # plt.axvline(x=0.0,color='k',linestyle='-',linewidth=0.5)
-# plt.plot(xs[tr][:,0],xs[tr][:,1],'k',alpha=0.8,label="true")
-# plt.plot(q_x[:,0],q_x[:,1],'b--',alpha=0.8,label="inferred")
-# plt.legend()
-# plt.xlabel('x1')
-# plt.ylabel('x2')
-# plt.xlim((-0.2,1.2))
-# plt.ylim((-0.2,1.2))
-# sns.despine()
-# plt.title('continuous latents')
-# plt.tight_layout()

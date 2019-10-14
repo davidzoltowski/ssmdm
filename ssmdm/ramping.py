@@ -2,24 +2,23 @@ import autograd.numpy as np
 import autograd.numpy.random as npr
 
 import ssm
+from ssm import hmm, lds
 from ssm.hmm import HMM
 from ssm.lds import SLDS
-from ssm import hmm
-from ssmdm.misc import smooth
-import copy
-
-from ssm.util import random_rotation, ensure_args_are_lists, one_hot
+from ssm.util import random_rotation, ensure_args_are_lists, one_hot, softplus
 from ssm.observations import Observations, AutoRegressiveDiagonalNoiseObservations
 from ssm.transitions import Transitions, RecurrentOnlyTransitions, RecurrentTransitions
 from ssm.init_state_distns import InitialStateDistribution
 from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
-from ssm.preprocessing import factor_analysis_with_imputation
+from ssm.preprocessing import factor_analysis_with_imputation, interpolate_data, pca_with_imputation
+from ssm.optimizers import adam_step, rmsprop_step, sgd_step, convex_combination
 import ssm.stats as stats
 
-# preprocessing
-# for initialization
+from ssmdm.misc import smooth
+
+import copy
+
 from tqdm.auto import trange
-from ssm.optimizers import adam_step, rmsprop_step, sgd_step, convex_combination
 from autograd.scipy.misc import logsumexp
 from autograd.tracer import getval
 from autograd.misc import flatten
@@ -27,15 +26,12 @@ from autograd import value_and_grad
 from scipy.stats import gamma, norm, invgamma
 from scipy.special import gammaln
 
-from ssm.util import ensure_args_are_lists, \
-    logistic, logit, softplus, inv_softplus
-from ssm.preprocessing import interpolate_data, pca_with_imputation
 
-class RampingTransitions(RecurrentOnlyTransitions):
+class RampingSoftTransitions(RecurrentOnlyTransitions):
     def __init__(self, K, D, M=0, scale=100):
         assert K == 2
         assert D == 1
-        super(RampingTransitions, self).__init__(K, D, M)
+        super(RampingSoftTransitions, self).__init__(K, D, M)
 
         # Parameters linking past observations to state distribution
         self.Ws = np.zeros((K, M))
@@ -57,11 +53,11 @@ class RampingTransitions(RecurrentOnlyTransitions):
         pass
 
 
-class RampingHardTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=500):
+class RampingTransitions(RecurrentTransitions):
+    def __init__(self, K, D, M=0, scale=100):
         assert K == 2
         assert D == 1
-        super(RampingHardTransitions, self).__init__(K, D, M)
+        super(RampingTransitions, self).__init__(K, D, M)
 
         # Parameters linking past observations to state distribution
         self.log_Ps = np.array([[0, -scale], [-scale, scale]])
@@ -82,19 +78,17 @@ class RampingHardTransitions(RecurrentTransitions):
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
 
-class RampingLowerBoundHardTransitions(RecurrentTransitions):
+class RampingLowerBoundTransitions(RecurrentTransitions):
     def __init__(self, K, D, M=0, scale=100.0):
         assert K == 3
         assert D == 1
-        super(RampingLowerBoundHardTransitions, self).__init__(K, D, M)
+        super(RampingLowerBoundTransitions, self).__init__(K, D, M)
 
         # Parameters linking past observations to state distribution
         self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
         self.scale = scale
-        self.lb_loc = -0.1
+        self.lb_loc = 0.0
         self.lb_scale = 10.0
-        # self.lb_loc = 0.25
-        # self.lb_scale = 25.0
         self.log_Ps[0,2] = self.lb_loc * self.lb_scale
         self.Ws = np.zeros((K, M))
         self.Rs = np.array([0, scale, -self.lb_scale]).reshape((3, 1))
@@ -125,32 +119,25 @@ class RampingLowerBoundHardTransitions(RecurrentTransitions):
 
 class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D=1, M=5, lags=1, beta=None, log_sigma_scale=np.log(1e-3), x0=0.4):
-        # assert K == 2
         assert D == 1
         super(RampingObservations, self).__init__(K, D, M)
 
-        # The only free parameters of the DDM are the ramp rate...
+        # The only free parameters are the ramp rate...
         if beta is None:
             beta = np.linspace(-0.02,0.02,M)
         self.beta = beta
         self.log_sigma_scale = log_sigma_scale # log variance
         self.x0 = x0 # mu init
 
-        # and the noise variances, which are initialized in the AR constructor
+        # and the noise variances
         self.base_var=1e-5
-        # self._log_sigmasq[0] = np.log(self.base_var) + self.log_sigma_scale
-        # self._log_sigmasq[1] = np.log(self.base_var)
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
         mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
         self._log_sigmasq = self.log_sigma_scale * mask1 + np.log(self.base_var) * mask2
 
-
         # set init params
         self.mu_init = self.x0 * np.ones((K,1))
-        # self._log_sigmasq_init[0] = np.log(1e-5)
         self._log_sigmasq_init = self.log_sigma_scale * mask1 + np.log(self.base_var) * mask2
-        # self._log_sigmasq_init[0] = np.log(self.base_var)
-        # self._log_sigmasq_init[1] = np.log(self.base_var)
 
         # They only differ in their input
         self.Vs[0] = self.beta    # ramp
@@ -168,13 +155,8 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
     @params.setter
     def params(self, value):
         self.beta, self.log_sigma_scale, self.x0 = value
-        # mask = np.reshape(np.array([1, 0]), (2, 1, 1))
         mask = np.reshape(np.concatenate(([1],np.zeros(self.K-1))), (self.K, 1, 1))
         self.Vs = mask * self.beta
-        # sig_maskmask = np.reshape(np.concatenate(([1],np.zeros(K-1))), (K, 1, 1))
-        # sig_mask = np.reshape(np.array([1, 0]), (2, 1))
-        # self._log_sigmasq = np.log(self.base_var)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
-        # self._log_sigmasq_init = np.log(self.base_var)*np.ones((2,1)) + sig_mask * self.log_sigma_scale
         mask1 = np.vstack( (np.ones(self.D,), np.zeros((self.K-1,self.D))) )
         mask2 = np.vstack( (np.zeros(self.D), np.ones((self.K-1,self.D))) )
         self._log_sigmasq = self.log_sigma_scale * mask1 + np.log(self.base_var) * mask2
@@ -185,8 +167,8 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         beta_mean = np.zeros(np.shape(self.beta)[0])
         beta_cov = (0.1**2)*np.eye(np.shape(self.beta)[0])
         dyn_var = np.exp(self.log_sigma_scale)
-        alpha = 1.1 # 0.02
-        beta = 1e-3 # 0.02
+        alpha = 1.1 # or 0.02
+        beta = 1e-3 # or 0.02
         return np.sum(stats.multivariate_normal_logpdf(np.array([self.beta]), beta_mean, beta_cov)) \
                 + np.sum(-0.5 * (self.x0 - 0.5)**2 / 1.0) \
                 + alpha*np.log(beta) - gammaln(alpha) - (alpha+1)*np.log(dyn_var) - beta/dyn_var
@@ -198,9 +180,9 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         Observations.m_step(self, expectations, datas, inputs, masks, tags, optimizer=optimizer, **kwargs)
 
 
-class RampingEmissions(PoissonEmissions):
+class RampingPoissonEmissions(PoissonEmissions):
     def __init__(self, N, K, D, M=0, single_subspace=True, link="softplus", bin_size=0.01):
-        super(RampingEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace, link=link, bin_size=bin_size)
+        super(RampingPoissonEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace, link=link, bin_size=bin_size)
         # Make sure the input matrix Fs is set to zero and never updated
         self.Fs *= 0
         self.ds *= 0
@@ -228,22 +210,13 @@ class RampingEmissions(PoissonEmissions):
 
     def invert(self, data, input=None, mask=None, tag=None):
         yhat = smooth(data,20)
-        # yhat = np.copy(data)
         xhat = self.link(np.clip(yhat, 0.01, np.inf))
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
-        # num_pad = 10
-        # xhat = smooth(xhat,5)
-        # xhat = smooth(np.concatenate((np.zeros((num_pad,1)),xhat)),10)[num_pad:,:]
-        # done=False
         for t in range(xhat.shape[0]):
             if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
-            # if np.median(xhat[np.max([0,t-2]):t+3])>0.99 and t>0:
                 xhat[np.minimum(0,t-2):] = 1.01*np.ones(np.shape(xhat[np.minimum(0,t-2):]))
                 xhat[:np.maximum(0,t-2)] = 0.5*np.ones(np.shape(xhat[:np.maximum(0,t-2)]))
-                # xhat[:np.maximum(0,t-2)] = np.minimum(xhat[:np.maximum(0,t-2)],0.99)
                 break
-        # xhat[xhat > 0.95] = 0.95
-        # xhat = 0.5*np.ones((data.shape[0],self.D))
         if np.abs(xhat[0])>1.0:
                 xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat
@@ -291,69 +264,131 @@ class RampingEmissions(PoissonEmissions):
     #         diags[np.tile(x>=1,(1,self.N))] *= 0.0
     #         return np.einsum('tn, ni, nj ->tij', diags, self.Cs[0], self.Cs[0])
 
-# define new initial state distribution so the init parameters are not learned!
+class RampingGaussianEmissions(GaussianEmissions):
+    def __init__(self, N, K, D, M=0, single_subspace=True):
+        super(RampingGaussianEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace)
+        # Make sure the input matrix Fs is set to zero and never updated
+        self.Fs *= 0
+
+    # Construct an emissions model
+    @property
+    def params(self):
+        return self._Cs, self.ds, self.inv_etas
+
+    @params.setter
+    def params(self, value):
+        self._Cs, self.ds, self.inv_etas = value
+
+    @ensure_args_are_lists
+    def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=10, num_tr_iters=50):
+        # here, init params using data
+        # estimate boundary rate
+        # use that to estimate initial x0
+        # then init w2, betas
+        pass
+
+class RampingInitialStateDistribution(InitialStateDistribution):
+    def __init__(self, K, D, M=0):
+        self.K, self.D, self.M = K, D, M
+        self.log_pi0 = -np.log(K) * np.ones(K)
+
+    @property
+    def params(self):
+        return (self.log_pi0,)
+
+    @params.setter
+    def params(self, value):
+        self.log_pi0 = value[0]
+
+    @ensure_args_are_lists
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def permute(self, perm):
+        """
+        Permute the discrete latent states.
+        """
+        self.log_pi0 = self.log_pi0[perm]
+
+    @property
+    def init_state_distn(self):
+        return np.exp(self.log_pi0 - logsumexp(self.log_pi0))
+
+    def log_prior(self):
+        return 0
+
+    def log_initial_state_distn(self, data, input, mask, tag):
+        return self.log_pi0 - logsumexp(self.log_pi0)
+
+    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+        self.log_pi0 = self.log_pi0
+
 
 class ObservedRamping(HMM):
-    def __init__(self, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.5):
+    def __init__(self, K, D, *, M,
+                transitions="ramp",
+                transition_kwargs=None,
+                observation_kwargs=None,
+                **kwargs):
 
-        K, D = 2, 1
+        init_state_distn = RampingInitialStateDistribution(K, D, M=M)
+        init_state_distn.log_pi0 = np.log(np.concatenate(([0.999],(0.001/(K-1))*np.ones(K-1))))
 
-        init_state_distn = InitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.001])
-        transition_distn = RampingTransitions(K, D, M=M)
-        observation_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
+        if transitions == "ramplower":
+            assert K == 3
+        transition_classes = dict(
+            ramp=RampingTransitions,
+            ramplower=RampingLowerBoundTransitions,
+            rampsoft=RampingSoftTransitions)
+        transition_kwargs = transition_kwargs or {}
+        transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
 
-        super().__init__(K, D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                observations=observation_distn)
+        observation_kwargs = observation_kwargs or {}
+        observations = RampingObservations(K, D, M=M, **observation_kwargs)
 
-class ObservedRampingHard(HMM):
-    def __init__(self, K=2, D=1, *, M=5, beta=np.array([-0.01,-0.005,0.0,0.01,0.02]), log_sigma_scale=np.log(10), x0=0.4):
-
-        K, D = 2, 1
-
-        init_state_distn = InitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.001])
-        transition_distn = RampingHardTransitions(K, D, M=M)
-        observation_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
-
-        super().__init__(K, D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                observations=observation_distn)
+        super().__init__(K, D, M=M,
+                            init_state_distn=init_state_distn,
+                            transitions=transitions,
+                            observations=observations)
 
 
 class Ramping(SLDS):
-    def __init__(self, N, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(100), x0=0.4, link="softplus", bin_size=1.0):
+    def __init__(self, N, K=2, D=1, *, M=5,
+            transitions="ramp",
+            transition_kwargs=None,
+            dynamics_kwargs=None,
+            emissions="poisson",
+            emission_kwargs=None,
+            single_subspace=True,
+            **kwargs):
 
-        K, D = 2, 1
-
-        init_state_distn = InitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.001])
-        transition_distn = RampingTransitions(K, D, M=M)
-        dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
-        emission_distn = RampingEmissions(N, K, D, M=M, single_subspace=True, link=link, bin_size=bin_size)
-
-        super().__init__(N, K=K, D=D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                dynamics=dynamics_distn,
-                                emissions=emission_distn)
-
-class RampingHard(SLDS):
-    def __init__(self, N, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.4, link="softplus", bin_size=1.0):
-
-        K, D = 2, 1
-
-        # init_state_distn = InitialStateDistribution(K, D, M=M)
         init_state_distn = RampingInitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.001])
-        transition_distn = RampingHardTransitions(K, D, M=M)
-        dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
-        emission_distn = RampingEmissions(N, K, D, M=M, single_subspace=True, link=link, bin_size=bin_size)
+        init_state_distn.log_pi0 = np.log(np.concatenate(([0.999],(0.001/(K-1))*np.ones(K-1))))
 
-        super().__init__(N, K=K, D=D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                dynamics=dynamics_distn,
-                                emissions=emission_distn)
+        if transitions == "ramplower":
+            assert K == 3
+        transition_classes = dict(
+            ramp=RampingTransitions,
+            ramplower=RampingLowerBoundTransitions,
+            rampsoft=RampingSoftTransitions)
+        transition_kwargs = transition_kwargs or {}
+        transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
+
+        dynamics_kwargs = dynamics_kwargs or {}
+        dynamics = RampingObservations(K, D, M=M, **dynamics_kwargs)
+
+        emission_classes = dict(
+            poisson=RampingPoissonEmissions,
+            gaussian=RampingGaussianEmissions)
+        emission_kwargs = emission_kwargs or {}
+        emissions = emission_classes[emissions](N, K, D, M=M,
+            single_subspace=single_subspace, **emission_kwargs)
+
+        super().__init__(N, K=K, D=D, M=M,
+                            init_state_distn=init_state_distn,
+                            transitions=transitions,
+                            dynamics=dynamics,
+                            emissions=emissions)
 
     @ensure_args_are_lists
     def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=25, choices=None):
@@ -380,24 +415,6 @@ class RampingHard(SLDS):
         self.init_state_distn = copy.deepcopy(arhmm.init_state_distn)
         self.transitions = copy.deepcopy(arhmm.transitions)
         self.dynamics = copy.deepcopy(arhmm.observations)
-
-
-class RampingLowerHard(SLDS):
-    def __init__(self, N, K=3, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(1e-3), x0=0.4, link="softplus", bin_size=1.0):
-
-        K, D, = 3, 1
-
-        # init_state_distn = InitialStateDistribution(K, D, M=M)
-        init_state_distn = RampingInitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.0005, 0.0005])
-        transition_distn = RampingLowerBoundHardTransitions(K, D, M=M)
-        dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
-        emission_distn = RampingEmissions(N, K, D, M=M, single_subspace=True, link=link, bin_size=bin_size)
-
-        super().__init__(N, K=K, D=D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                dynamics=dynamics_distn,
-                                emissions=emission_distn)
 
 def simulate_ramping(beta=np.linspace(-0.02,0.02,5), w2=3e-3, x0=0.5, C=40, T=100, bin_size=0.01):
 
@@ -439,80 +456,3 @@ def simulate_ramping(beta=np.linspace(-0.02,0.02,5), w2=3e-3, x0=0.5, C=40, T=10
         ys.append(y.reshape((tr_length,1)))
 
     return ys, xs, zs, us, tr_lengths, trial_cohs
-
-class RampingGaussianEmissions(GaussianEmissions):
-    def __init__(self, N, K, D, M=0, single_subspace=True):
-        super(RampingGaussianEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace)
-        # Make sure the input matrix Fs is set to zero and never updated
-        self.Fs *= 0
-
-    # Construct an emissions model
-    @property
-    def params(self):
-        return self._Cs, self.ds, self.inv_etas
-
-    @params.setter
-    def params(self, value):
-        self._Cs, self.ds, self.inv_etas = value
-
-    @ensure_args_are_lists
-    def initialize(self, datas, inputs=None, masks=None, tags=None, num_em_iters=10, num_tr_iters=50):
-        # here, init params using data
-        # estimate boundary rate
-        # use that to estimate initial x0
-        # then guess? or sample? values of w2, betas
-        pass
-
-class RampingGaussianHard(SLDS):
-    def __init__(self, N, K=2, D=1, *, M=5, beta=np.linspace(-0.02,0.02,5), log_sigma_scale=np.log(100), x0=0.4):
-
-        K, D, M = 2, 1, 5
-
-        init_state_distn = InitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log([0.999, 0.001])
-        transition_distn = RampingHardTransitions(K, D, M=M)
-        dynamics_distn = RampingObservations(K, D, M=M, beta=beta, log_sigma_scale=log_sigma_scale, x0=x0)
-        emission_distn = RampingGaussianEmissions(N, K, D, M=M)
-
-        super().__init__(N, K=K, D=D, M=M, init_state_distn=init_state_distn,
-                                transitions=transition_distn,
-                                dynamics=dynamics_distn,
-                                emissions=emission_distn)
-
-class RampingInitialStateDistribution(InitialStateDistribution):
-    def __init__(self, K, D, M=0):
-        self.K, self.D, self.M = K, D, M
-        self.log_pi0 = -np.log(K) * np.ones(K)
-
-    @property
-    def params(self):
-        return (self.log_pi0,)
-
-    @params.setter
-    def params(self, value):
-        self.log_pi0 = value[0]
-
-    @ensure_args_are_lists
-    def initialize(self, datas, inputs=None, masks=None, tags=None):
-        pass
-
-    def permute(self, perm):
-        """
-        Permute the discrete latent states.
-        """
-        self.log_pi0 = self.log_pi0[perm]
-
-    @property
-    def init_state_distn(self):
-        return np.exp(self.log_pi0 - logsumexp(self.log_pi0))
-
-    def log_prior(self):
-        return 0
-
-    def log_initial_state_distn(self, data, input, mask, tag):
-        return self.log_pi0 - logsumexp(self.log_pi0)
-
-    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
-        self.log_pi0 = self.log_pi0
-        # pi0 = sum([Ez[0] for Ez, _, _ in expectations]) + 1e-8
-        # self.log_pi0 = np.log(pi0 / pi0.sum())
