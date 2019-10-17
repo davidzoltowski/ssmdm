@@ -544,7 +544,7 @@ class RampStepPoissonEmissions(PoissonEmissions):
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
         num_pad = 10
         xhat = smooth(np.concatenate((np.zeros((num_pad,self.D)),xhat)),10)[num_pad:,:]
-        xhat = np.clip(xhat, -1.1, 1.1s)
+        xhat = np.clip(xhat, -1.1, 1.1)
         if np.abs(xhat[0]).any()>1.0:
                 xhat[0] = 0.1*npr.randn(1,self.D)
         return xhat
