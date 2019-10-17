@@ -69,27 +69,26 @@ test_acc = LatentAccumulation(N, K, D, M=M,
 								transitions="race",
 								emissions="poisson",
 								emission_kwargs={"bin_size":bin_size})
-betas0 = 0.02*np.ones((D,))
-sigmas0 = np.log((4e-5+2.5e-3*npr.rand()))*np.ones((D,))
+betas0 = 0.02+0.08*np.ones((D,))
+sigmas0 = np.log((4e-5+3.5e-3*npr.rand()))*np.ones((D,))
 test_acc.dynamics.params = (betas0, sigmas0, test_acc.dynamics.params[2])
-test_acc.emissions.ds = (np.mean([y[0:3] for y in ys],axis=(0,1)) / bin_size).reshape((1,N))
 
+# Initialize C, d
 u_sum = np.array([np.sum(u[:,0] - u[:,1]) for u in us])
 y_end = np.array([y[-10:] for y in ys])
 y_U = y_end[np.where(u_sum>=25)]
 y_L = y_end[np.where(u_sum<=-25)]
 C_init = np.hstack((np.mean(y_U,axis=(0,1))[:,None],np.mean(y_L,axis=(0,1))[:,None])) / bin_size - test_acc.emissions.ds.T
 
-# test_acc.initialize(ys, inputs=us)
+test_acc.emissions.ds = (np.mean([y[0:3] for y in ys],axis=(0,1)) / bin_size).reshape((1,N))
 test_acc.emissions.Cs[0] = C_init
-init_params = copy.deepcopy(test_acc.params)
 
-# init posterior
+# fit model
 init_var = 1e-4
 q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 						variational_posterior="structured_meanfield",
 						num_iters=25, alpha=0.5, initialize=False,
-						variational_posterior_kwargs={"initial_variance":init_var})
+						variational_posterior_kwargs={"initial_variance":1e-4})
 
 plt.figure()
 plt.plot(q_elbos[1:])
