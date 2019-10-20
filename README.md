@@ -1,3 +1,2 @@
-# ssmdm
-A recurrent state-space framework for modeling neural activity during decision-making.
+# A recurrent state-space framework for modeling neural activity during decision-making
 
