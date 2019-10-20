@@ -59,7 +59,6 @@ cohs = np.array(cohs)
 
 def initialize_ramp(ys,cohs, bin_size):
 	coh5 = np.where(cohs==4)[0]
-	# coh5 = np.concatenate((np.where(cohs==4)[0],np.where(cohs==3)[0]))
 	y_end = np.array([y[-10:] for y in ys])
 	y_end_5 = y_end[coh5]
 	C = np.mean(y_end_5,axis=(0,1)) / bin_size
@@ -78,7 +77,7 @@ test_ramp = Ramping(N, K=K, D=1, M=M,
 					 emissions_kwargs={"bin_size":bin_size})
 test_ramp.emissions.Cs[0] =  C.reshape((N,1))
 
-# initialize variational posterior
+# fit model
 q_elbos, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior="structured_meanfield",
 								  variational_posterior_kwargs={"initial_variance":1e-5},
@@ -103,17 +102,17 @@ def plot_posterior_spikes(q,model,ys,us,tr=0):
 
 	q_lem_z = model.most_likely_states(q_lem_x, ys[tr])
 
-	# max_rate = np.log1p(np.exp(model.emissions.Cs[0]+model.emissions.ds[0]))[0][0]
-	f, (a0, a1, a2) = plt.subplots(3, 1, gridspec_kw={'height_ratios': [0.5, 3.5, 1]}, figsize=[8,6])
+	f, (a0, a1, a2) = plt.subplots(3, 1, gridspec_kw={'height_ratios': [1, 3.5, 1]}, figsize=[8,6])
 
 	yhat = model.smooth(q_lem_x, ys[tr], input=us[tr])
-	zhat = model.most_likely_states(q_lem_x, ys[tr], input=us[tr])
+	# zhat = model.most_likely_states(q_lem_x, ys[tr], input=us[tr])
 	zhat = np.argmax(q.mean_discrete_states[tr][0],axis=1)
 	a0.imshow(np.row_stack((zs[tr], zhat)), aspect="auto", vmin=0, vmax=1)
 	a0.set_xticks([])
-	a0.set_yticks([])
+	a0.set_yticks([0,1])
+	a0.set_yticklabels(["$z$", "$\hat{z}$"])
 	a0.set_xlim([0,ys[tr].shape[0]-1])
-	a0.axis("off")
+	# a0.axis("off")
 	a1.plot(xs[tr],'b',label="true")
 	a1.plot(q_lem_x,'k',label="inferred")
 	a1.fill_between(np.arange(np.shape(ys[tr])[0]),(q_lem_x-q_lem_std*2.0)[:,0], (q_lem_x+q_lem_std*2.0)[:,0], facecolor='k', alpha=0.3)
@@ -124,6 +123,7 @@ def plot_posterior_spikes(q,model,ys,us,tr=0):
 	a1.set_ylim([-0.1,1.1])
 	a1.set_ylabel("$x$")
 	a1.set_xlim([0,ys[tr].shape[0]-1])
+	a1.legend()
 	a2.set_ylabel("$y$")
 	for n in range(ys[tr].shape[1]):
 		a2.eventplot(np.where(ys[tr][:,n]>0)[0], linelengths=0.5, lineoffsets=1+n,color='k')
