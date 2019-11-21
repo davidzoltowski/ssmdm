@@ -82,7 +82,7 @@ class AccumulationRaceSoftTransitions(RecurrentOnlyTransitions):
         pass
 
 class DDMTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=500):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 3
         assert D == 1
         # assert M == 1
@@ -99,12 +99,13 @@ class DDMTransitions(RecurrentTransitions):
 
     @params.setter
     def params(self, value):
-        scale = value
-        K, M = self.K, self.M
-        self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
-        self.Ws = np.zeros((K, M))
-        self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
         pass
+        # scale = value
+        # K, M = self.K, self.M
+        # self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
+        # self.Ws = np.zeros((K, M))
+        # self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
+        # pass
 
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
@@ -138,7 +139,7 @@ class DDMSoftTransitions(RecurrentOnlyTransitions):
         pass
 
 class DDMCollapsingTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=500):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 3
         assert D == 1
         # assert M == 1
@@ -146,8 +147,8 @@ class DDMCollapsingTransitions(RecurrentTransitions):
 
         # Parameters linking past observations to state distribution
         self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
-        bound_scale = 0.01
-        self.Ws = bound_scale * scale * np.eye(K,M)
+        self.bound_scale = 0.008 # 0.01
+        self.Ws = self.bound_scale * scale * np.eye(K,M)
         self.Ws[0][0] = 0.0
         self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
 
@@ -157,14 +158,14 @@ class DDMCollapsingTransitions(RecurrentTransitions):
 
     @params.setter
     def params(self, value):
-        scale = value
-        K, M = self.K, self.M
-        self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
-        bound_scale = 0.01
-        self.Ws = bound_scale * scale * np.eye(K,M)
-        self.Ws[0][0] = 0.0
-        self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
         pass
+        # scale = value
+        # K, M = self.K, self.M
+        # self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
+        # bound_scale = 0.01
+        # self.Ws = bound_scale * scale * np.eye(K,M)
+        # self.Ws[0][0] = 0.0
+        # self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
 
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
@@ -174,7 +175,7 @@ class DDMCollapsingTransitions(RecurrentTransitions):
 
 
 class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
-    def __init__(self, K, D, M, lags=1, learn_A=True):
+    def __init__(self, K, D, M, lags=1, learn_A=True, learn_V=True):
         super(AccumulationObservations, self).__init__(K, D, M)
 
         # diagonal dynamics for each state
@@ -190,9 +191,12 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
             self._As = np.tile(np.eye(D),(K,1,1))
 
         # set input Accumulation params, one for each dimension
-        # They only differ in their input
+        # first D inputs are accumulated in different dimensions
+        # rest of M-D inputs are applied to each dimension
         self._betas = 0.1*np.ones(D,)
-        self.Vs[0] = self._betas*np.eye(D,M)
+        self.learn_V = learn_V
+        self._V = 0.0*np.ones((D, M-D)) # additional covariates, if they exist
+        self.Vs[0] = np.hstack((self._betas*np.eye(D,D), self._V))
         for d in range(1,K):
             self.Vs[d] *= np.zeros((D,M))
 
@@ -211,24 +215,45 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
 
     @property
     def params(self):
-        if self.learn_A:
-            params = self._betas, self.accum_log_sigmasq, self._a_diag
-        else:
-            params = self._betas, self.accum_log_sigmasq
+        # import ipdb
+        # ipdb.set_trace()
+        params = self._betas, self.accum_log_sigmasq
+        params = params + (self._a_diag,) if self.learn_A else params
+        params = params + (self._V,) if self.learn_V else params
+        # if self.learn_A and self.learn_V:
+        #     params = self._betas, self._V, self.accum_log_sigmasq, self._a_diag
+        # else:
+        #     params = self._betas, self._V, self.accum_log_sigmasq,
         return params
 
     @params.setter
     def params(self, value):
+        # import ipdb
+        # ipdb.set_trace()
+
+        self._betas, self.accum_log_sigmasq = value[:2]
         if self.learn_A:
-            self._betas, self.accum_log_sigmasq, self._a_diag = value
-        else:
-            self._betas, self.accum_log_sigmasq = value
+            self._a_diag = value[2]
+        if self.learn_V:
+            self._V = value[-1]
+
+        # if self.learn_A:
+            # self._betas, self._V, self.accum_log_sigmasq, self._a_diag = value
+        # else:
+            # self._betas, self._V, self.accum_log_sigmasq, = value
 
         K, D, M = self.K, self.D, self.M
 
         # update V
-        mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
-        self.Vs = self._betas * mask
+        # mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
+        mask0 = np.hstack((np.eye(D), np.ones((D,M-D)))) # state K = 0
+        mask = np.vstack((mask0[None,:,:], np.zeros((K-1,D,M))))
+        # beta_mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
+        # mask0 = np.hstack((np.zeros((D,D)), np.ones((D,M-D))))
+        # covariate_mask = np.vstack((mask0[None,:,:], np.zeros((K-1,D,M))))
+
+        # self.Vs = self._betas * mask
+        self.Vs = np.hstack((np.diag(self._betas), self._V)) * mask
 
         # update sigmas
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
@@ -335,7 +360,8 @@ class Accumulation(HMM):
             racesoft=AccumulationRaceSoftTransitions,
             race=AccumulationRaceTransitions,
             ddmsoft=DDMSoftTransitions,
-            ddm=DDMTransitions)
+            ddm=DDMTransitions,
+            ddmcollapsing=DDMCollapsingTransitions)
         transition_kwargs = transition_kwargs or {}
         transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
 
@@ -374,7 +400,7 @@ class AccumulationGaussianEmissions(GaussianEmissions):
 
         if self.D == 1 and base_model.transitions.type_name == "DDMTransitions":
 
-            d_init = np.mean([y[0] for y in datas],axis=0)
+            d_init = np.mean([y[0:3] for y in datas],axis=(0,1))
             u_sum = np.array([np.sum(u) for u in inputs])
             y_end = np.array([y[-3:] for y in datas])
             u_l, u_u = np.percentile(u_sum, [20,80]) # use 20th and 80th percentile input
@@ -452,7 +478,8 @@ class AccumulationPoissonEmissions(PoissonEmissions):
         xhat = smooth(xhat,10)
 
         if self.bin_size < 1:
-            xhat = np.clip(xhat, -0.95, 0.95)
+            xhat = np.clip(xhat, -0.9, 0.9)
+            # xhat = np.clip(xhat, -1.05, 1.05)
         # for t in range(xhat.shape[0]):
         #     if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
         #     # if np.median(xhat[np.max([0,t-2]):t+3])>0.99 and t>0:
@@ -473,26 +500,39 @@ class AccumulationPoissonEmissions(PoissonEmissions):
                    emission_optimizer="bfgs", num_optimizer_iters=1000):
         print("Initializing Emissions parameters...")
 
-        datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
+        if self.D == 1 and base_model.transitions.type_name == "DDMTransitions":
 
-        Td = sum([data.shape[0] for data in datas])
-        xs = [base_model.sample(T=data.shape[0],input=input)[1] for data, input in zip(datas, inputs)]
-        def _objective(params, itr):
-            self.params = params
-            obj = 0
-            obj += self.log_prior()
-            for data, input, mask, tag, x in \
-                zip(datas, inputs, masks, tags, xs):
-                obj += np.sum(self.log_likelihoods(data, input, mask, tag, x))
-            return -obj / Td
+            d_init = np.mean([y[0:3] for y in datas],axis=(0,1))
+            u_sum = np.array([np.sum(u) for u in inputs])
+            y_end = np.array([y[-3:] for y in datas])
+            u_l, u_u = np.percentile(u_sum, [20,80]) # use 20th and 80th percentile input
+            y_U = y_end[np.where(u_sum>=u_u)]
+            y_L = y_end[np.where(u_sum<=u_l)]
+            C_init = (1.0/2.0)*np.mean((np.mean(y_U,axis=0) - np.mean(y_L,axis=0)),axis=0)
+            self.Cs = C_init.reshape([1,self.N,self.D]) / self.bin_size
+            self.ds = d_init.reshape([1,self.N]) / self.bin_size
 
-        # Optimize emissions log-likelihood
-        optimizer = dict(bfgs=bfgs, lbfgs=lbfgs)[emission_optimizer]
-        self.params = \
-            optimizer(_objective,
-                      self.params,
-                      num_iters=num_optimizer_iters,
-                      full_output=False)
+        else:
+            datas = [interpolate_data(data, mask) for data, mask in zip(datas, masks)]
+
+            Td = sum([data.shape[0] for data in datas])
+            xs = [base_model.sample(T=data.shape[0],input=input)[1] for data, input in zip(datas, inputs)]
+            def _objective(params, itr):
+                self.params = params
+                obj = 0
+                obj += self.log_prior()
+                for data, input, mask, tag, x in \
+                    zip(datas, inputs, masks, tags, xs):
+                    obj += np.sum(self.log_likelihoods(data, input, mask, tag, x))
+                return -obj / Td
+
+            # Optimize emissions log-likelihood
+            optimizer = dict(bfgs=bfgs, lbfgs=lbfgs)[emission_optimizer]
+            self.params = \
+                optimizer(_objective,
+                          self.params,
+                          num_iters=num_optimizer_iters,
+                          full_output=False)
 
 class RampStepPoissonEmissions(PoissonEmissions):
     def __init__(self, N, K, D, M=0, single_subspace=False, link="softplus", bin_size=1.0):
@@ -586,7 +626,7 @@ class LatentAccumulation(SLDS):
             **kwargs):
 
         init_state_distn = AccumulationInitialStateDistribution(K, D, M=M)
-        init_state_distn.log_pi0 = np.log(np.concatenate(([0.999],(0.001/(K-1))*np.ones(K-1))))
+        init_state_distn.log_pi0 = np.log(np.concatenate(([0.9999],(0.0001/(K-1))*np.ones(K-1))))
 
         transition_classes = dict(
             racesoft=AccumulationRaceSoftTransitions,

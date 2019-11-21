@@ -87,7 +87,7 @@ test_acc.emissions.Cs[0] = C_init
 init_var = 1e-4
 q_elbos, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 						variational_posterior="structured_meanfield",
-						num_iters=25, alpha=0.5, initialize=False,
+						num_iters=5, alpha=0.5, initialize=False,
 						variational_posterior_kwargs={"initial_variance":1e-4})
 
 plt.figure()
