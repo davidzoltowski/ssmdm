@@ -24,7 +24,7 @@ from autograd.misc import flatten
 from autograd import value_and_grad
 
 class AccumulationRaceTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=500):
+    def __init__(self, K, D, M=0, scale=400):
         assert K == D+1
         assert D >= 1
         super(AccumulationRaceTransitions, self).__init__(K, D, M)
@@ -82,7 +82,7 @@ class AccumulationRaceSoftTransitions(RecurrentOnlyTransitions):
         pass
 
 class DDMTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=200):
+    def __init__(self, K, D, M=0, scale=400):
         assert K == 3
         assert D == 1
         # assert M == 1
@@ -175,7 +175,7 @@ class DDMCollapsingTransitions(RecurrentTransitions):
 
 
 class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
-    def __init__(self, K, D, M, lags=1, learn_A=True, learn_V=True):
+    def __init__(self, K, D, M, lags=1, learn_A=True, learn_V=False):
         super(AccumulationObservations, self).__init__(K, D, M)
 
         # diagonal dynamics for each state
@@ -215,42 +215,24 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
 
     @property
     def params(self):
-        # import ipdb
-        # ipdb.set_trace()
         params = self._betas, self.accum_log_sigmasq
         params = params + (self._a_diag,) if self.learn_A else params
         params = params + (self._V,) if self.learn_V else params
-        # if self.learn_A and self.learn_V:
-        #     params = self._betas, self._V, self.accum_log_sigmasq, self._a_diag
-        # else:
-        #     params = self._betas, self._V, self.accum_log_sigmasq,
         return params
 
     @params.setter
     def params(self, value):
-        # import ipdb
-        # ipdb.set_trace()
-
         self._betas, self.accum_log_sigmasq = value[:2]
         if self.learn_A:
             self._a_diag = value[2]
         if self.learn_V:
             self._V = value[-1]
 
-        # if self.learn_A:
-            # self._betas, self._V, self.accum_log_sigmasq, self._a_diag = value
-        # else:
-            # self._betas, self._V, self.accum_log_sigmasq, = value
-
         K, D, M = self.K, self.D, self.M
 
         # update V
-        # mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
         mask0 = np.hstack((np.eye(D), np.ones((D,M-D)))) # state K = 0
         mask = np.vstack((mask0[None,:,:], np.zeros((K-1,D,M))))
-        # beta_mask = np.vstack((np.eye(D,M)[None,:,:], np.zeros((K-1,D,M))))
-        # mask0 = np.hstack((np.zeros((D,D)), np.ones((D,M-D))))
-        # covariate_mask = np.vstack((mask0[None,:,:], np.zeros((K-1,D,M))))
 
         # self.Vs = self._betas * mask
         self.Vs = np.hstack((np.diag(self._betas), self._V)) * mask
@@ -262,21 +244,21 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         self._log_sigmasq_init = (self.accum_log_sigmasq + np.log(2) )* mask1 + np.log(self.bound_variance) * mask2
 
         # update A
-        if self.learn_A:
-            mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
-            mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
-            self._As = self._a_diag*mask1 + mask2
+        # if self.learn_A:
+        mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
+        mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
+        self._As = self._a_diag*mask1 + mask2
 
-    @property
-    def betas(self):
-        return self._betas
-
-    @betas.setter
-    def betas(self, value):
-        assert value.shape == (self.D,)
-        self._betas = value
-        mask = np.vstack((np.eye(self.D)[None,:,:], np.zeros((self.K-1,self.D,self.D))))
-        self.Vs = self._betas * mask
+    # @property
+    # def betas(self):
+    #     return self._betas
+    #
+    # @betas.setter
+    # def betas(self, value):
+    #     assert value.shape == (self.D,)
+    #     self._betas = value
+    #     mask = np.vstack((np.eye(self.D)[None,:,:], np.zeros((self.K-1,self.D,self.D))))
+    #     self.Vs = self._betas * mask
 
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
@@ -478,8 +460,8 @@ class AccumulationPoissonEmissions(PoissonEmissions):
         xhat = smooth(xhat,10)
 
         if self.bin_size < 1:
-            xhat = np.clip(xhat, -0.9, 0.9)
-            # xhat = np.clip(xhat, -1.05, 1.05)
+            # xhat = np.clip(xhat, -0.9, 0.9)
+            xhat = np.clip(xhat, -1.02, 1.02)
         # for t in range(xhat.shape[0]):
         #     if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
         #     # if np.median(xhat[np.max([0,t-2]):t+3])>0.99 and t>0:
