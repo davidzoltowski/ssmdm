@@ -701,14 +701,15 @@ class AccumulationInitialStateDistribution(InitialStateDistribution):
         self.log_pi0 = self.log_pi0[perm]
 
     @property
-    def init_state_distn(self):
+    def initial_state_distn(self):
         return np.exp(self.log_pi0 - logsumexp(self.log_pi0))
+
+    @property
+    def log_initial_state_distn(self):
+        return self.log_pi0 - logsumexp(self.log_pi0)
 
     def log_prior(self):
         return 0
-
-    def log_initial_state_distn(self, data, input, mask, tag):
-        return self.log_pi0 - logsumexp(self.log_pi0)
 
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         # do not update the parameters

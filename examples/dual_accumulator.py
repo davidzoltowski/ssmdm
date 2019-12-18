@@ -9,6 +9,7 @@ import seaborn as sns
 sns.set_style("ticks")
 sns.set_context("talk")
 from ssmdm.misc import smooth, generate_clicks, generate_clicks_D
+from ssmdm.misc import *
 from ssm.util import softplus
 from ssm.primitives import blocks_to_full, convert_lds_to_block_tridiag
 npr.seed(12345)
@@ -35,7 +36,7 @@ latent_acc.emissions.ds[0] = 40 + 4.0 * npr.randn(N)
 T = 100 # number of time bins
 trial_time = 1.0 # trial length in seconds
 dt = 0.01 # bin size in seconds
-N_samples = 250
+N_samples = 100
 
 # input statistics
 total_rate = 40 # the sum of the right and left poisson process rates is 40
@@ -84,69 +85,28 @@ C_init = np.hstack((np.mean(y_U,axis=(0,1))[:,None],np.mean(y_L,axis=(0,1))[:,No
 test_acc.emissions.ds[0] = d_init
 test_acc.emissions.Cs[0] = C_init
 test_acc_mf = copy.deepcopy(test_acc)
+test_acc_lds = copy.deepcopy(test_acc)
 init_params = copy.deepcopy(test_acc.params)
 
 # fit model
 init_var = 1e-2
-# q_elbos_lem, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
-# 						variational_posterior="structured_meanfield",
-# 						num_iters=50, alpha=0.5, initialize=False,
-# 						variational_posterior_kwargs={"initial_variance":init_var})
-#
-# # test_acc50 = copy.deepcopy(test_acc)
-# # q_lem50 = copy.deepcopy(q_lem)
-# q_elbos_lem2, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
-# 						variational_posterior=q_lem,
-# 						num_iters=25, alpha=0.5, initialize=False)
+q_elbos_lem, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
+						variational_posterior="structured_meanfield",
+						num_iters=10, alpha=0.5, initialize=False,
+						variational_posterior_kwargs={"initial_variance":init_var})
 
-test_acc_lds.params = init_params
 q_elbos_lds, q_lds = test_acc_lds.fit(ys, inputs=us, method="bbvi",
 						variational_posterior="lds",
-						num_iters=100, initialize=False,
+						num_iters=25, initialize=False,
 						variational_posterior_kwargs={"initial_variance":init_var})
-q_elbos_lds2, q_lds = test_acc_lds.fit(ys, inputs=us, method="bbvi",
-						variational_posterior=q_lds,
-						num_iters=400, initialize=False)
-q_elbos_lds3, q_lds = test_acc_lds.fit(ys, inputs=us, method="bbvi",
-						variational_posterior=q_lds,
-						num_iters=250, initialize=False)
-
-q_elbos_mf, q_mf = test_acc_mf.fit(ys, inputs=us, method="bbvi",
-						variational_posterior="mf",
-						num_iters=50, initialize=False,
-						variational_posterior_kwargs={"initial_variance":init_var},
-						kwargs={"step_size":1e-2})
-q_elbos_mf3, q_mf = test_acc_mf.fit(ys, inputs=us, method="bbvi",
-						variational_posterior=q_mf,
-						num_iters=100, initialize=False)
-q_elbos_mf6, q_mf = test_acc_mf.fit(ys, inputs=us, method="bbvi",
-						variational_posterior=q_mf,
-						num_iters=150, initialize=False)
-
 
 plt.ion()
 plt.figure()
-# plt.plot(q_elbos_lem[1:], label="vLEM")
-plt.plot(np.concatenate((q_elbos_lem[1:], q_elbos_lem2[1:])), label="vLEM")
-# plt.plot(q_elbos_mf[1:], label="BBVI")
-# plt.plot(np.concatenate((q_elbos_mf[1:], q_elbos_mf2[1:], q_elbos_mf3[1:])), label="BBVI")
-plt.plot(np.concatenate((q_elbos_mf[1:], q_elbos_mf2[1:], q_elbos_mf3[1:], q_elbos_mf4[1:], q_elbos_mf5[1:])), label="BBVI")
+plt.plot(q_elbos_lem, label="vLEM")
+plt.plot(q_elbos_lds, label="BBVI, LDS")
 plt.xlabel("iteration")
 plt.ylabel("ELBO")
-plt.legend()
-plt.tight_layout()
-ylim = plt.gcf().gca().get_ylim()
-
-plt.figure()
-# plt.plot(q_elbos_lem[1:], label="vLEM")
-plt.plot(np.concatenate((q_elbos_lem, q_elbos_lem2[1:])), label="vLEM")
-plt.plot(np.concatenate((q_elbos_lds, q_elbos_lds2[1:], q_elbos_lds3[1:])), label="LDS")
-# plt.plot(q_elbos_mf[1:], label="BBVI")
-# plt.plot(np.concatenate((q_elbos_mf, q_elbos_mf2[1:], q_elbos_mf3[1:])), label="BBVI")
-# plt.plot(np.concatenate((q_elbos_mf, q_elbos_mf2[1:], q_elbos_mf3[1:], q_elbos_mf4[1:], q_elbos_mf5[1:], q_elbos_mf6[1:])), label="BBVI")
-plt.xlabel("iteration")
-plt.ylabel("ELBO")
-plt.ylim(ylim)
+plt.ylim([q_elbos_lds[0]-1e4, max(q_elbos_lem+q_elbos_lds)+1e4])
 plt.legend()
 plt.tight_layout()
 
@@ -218,8 +178,6 @@ def plot_trial(model, q, posterior, tr=0, legend=False):
 tr = npr.randint(N_samples)
 plot_trial(test_acc, q_lem, "laplace_em", tr=tr)
 plot_trial(test_acc_lds, q_lds, "lds", tr=tr)
-# plot_trial(test_acc50, q_lem50, "laplace_em", tr=tr)
-plot_trial(test_acc_mf, q_mf, "mf", tr=tr)
 
 plt.figure(figsize=[6,3])
 plt.subplot(121)
@@ -236,7 +194,6 @@ plt.tight_layout()
 plt.show()
 
 sim_ys_1 = simulate_accumulator(test_acc, us, num_repeats=3)
-# sim_ys_2 = simulate_accumulator(test_acc_mf, us, num_repeats=3)
 sim_ys_2 = simulate_accumulator(test_acc_lds, us, num_repeats=3)
 true_psths = plot_psths(ys, us, 1, N);
 sim_psths_1 = plot_psths(sim_ys_1, us+us+us, 1, N);
@@ -244,9 +201,7 @@ sim_psths_2 = plot_psths(sim_ys_2, us+us+us, 1, N);
 r2_lem = compute_r2(true_psths, sim_psths_1)
 r2_mf = compute_r2(true_psths, sim_psths_2)
 psth_list=[true_psths, sim_psths_1, sim_psths_2]
-# psth_list=[true_psths, sim_psths_2]
-# plot_multiple_psths(psth_list, np.array([0,1,2]))
-plot_neurons2 = npr.permutation(np.arange(10))[:3]
+plot_neurons2 = npr.permutation(np.arange(N))[:3]
 plot_multiple_psths(psth_list, plot_neurons2)
 
 plt.gcf().axes[3].set_ylim(plt.gcf().axes[0].get_ylim())
@@ -257,62 +212,47 @@ plt.gcf().axes[5].set_ylim(plt.gcf().axes[2].get_ylim())
 plt.gcf().axes[8].set_ylim(plt.gcf().axes[2].get_ylim())
 
 # loop through points to get true and inferred "threshold times"
-# z_dir = []
-# z_t = []
-z_dir_mf = []
-z_t_mf = []
-# true_z_dir = []
-# true_z_t = []
+z_dir = []
+z_t = []
+z_dir_bbvi = []
+z_t_bbvi = []
+true_z_dir = []
+true_z_t = []
 for tr in range(N_samples):
-	# q_z = q_lem.mean_discrete_states[tr][0]
-	# zhat = np.argmax(q_z,axis=1)
-	# z_not0 = np.where(zhat > 0)[0]
-	# if z_not0.shape[0] > 0:
-	# 	z_t.append(z_not0[0])
-	# else:
-	# 	z_t.append(T+1)
-	# z_dir.append(zhat[-1])
+	q_z = q_lem.mean_discrete_states[tr][0]
+	zhat = np.argmax(q_z,axis=1)
+	z_not0 = np.where(zhat > 0)[0]
+	if z_not0.shape[0] > 0:
+		z_t.append(z_not0[0])
+	else:
+		z_t.append(T+1)
+	z_dir.append(zhat[-1])
 
-	# true_z_dir.append(zs[tr][-1])
-	# true_z_not0 = np.where(zs[tr] > 0)[0]
-	# if true_z_not0.shape[0] > 0:
-	# 	true_z_t.append(true_z_not0[0])
-	# else:
-	# 	true_z_t.append(T+1)
-	#
-	# # BBVI
-	# zhat = test_acc_mf.most_likely_states(q_mf.mean[tr], ys[tr], input=us[tr])
+	true_z_dir.append(zs[tr][-1])
+	true_z_not0 = np.where(zs[tr] > 0)[0]
+	if true_z_not0.shape[0] > 0:
+		true_z_t.append(true_z_not0[0])
+	else:
+		true_z_t.append(T+1)
+
+	# BBVI
 	zhat = test_acc_lds.most_likely_states(q_lds.mean[tr], ys[tr], input=us[tr])
 	z_not0 = np.where(zhat > 0)[0]
 	if z_not0.shape[0] > 0:
-		z_t_mf.append(z_not0[0])
+		z_t_bbvi.append(z_not0[0])
 	else:
-		z_t_mf.append(T+1)
-	z_dir_mf.append(zhat[-1])
+		z_t_bbvi.append(T+1)
+	z_dir_bbvi.append(zhat[-1])
 
 plt.figure()
 plt.plot(np.array([0,100]), np.array([0,100]), 'k--')
 plt.plot(np.array(true_z_t), np.array(z_t), '.', color=[0.3,0.3,1.0], alpha=0.75, label="vLEM") #markeredgecolor='w', linewidth=0.5, markersize=10)
-plt.plot(np.array(true_z_t), np.array(z_t_mf), '.', color=[1.0,0.3,0.3], alpha=0.75, label="BBVI") #, markeredgecolor='w', linewidth=0.5, markersize=10)
-# plt.plot(np.array(true_z_t), np.array(z_t2), 'r.')
+plt.plot(np.array(true_z_t), np.array(z_t_bbvi), '.', color=[1.0,0.3,0.3], alpha=0.75, label="BBVI") #, markeredgecolor='w', linewidth=0.5, markersize=10)
 plt.xlabel("true state switch time")
 plt.ylabel("inferred state switch time")
 plt.legend()
 plt.axis("equal")
 plt.tight_layout()
 
-print(np.sum(np.array(true_z_dir) == np.array(z_dir)))
-print(np.sum(np.array(true_z_dir) == np.array(z_dir_mf)))
-
-bins = np.arange(-100,55,5)
-plt.figure()
-data = np.array(true_z_t) - np.array(z_t)
-counts, bins = np.histogram(data, bins)
-plt.hist(bins[:-1], bins, weights=counts / np.sum(counts), color=[0.3,0.3,1.0], alpha=0.75, label="vLEM")
-data = np.array(true_z_t) - np.array(z_t_mf)
-counts, bins = np.histogram(data, bins)
-plt.hist(bins[:-1], bins, weights=counts / np.sum(counts), color=[1.0,0.3,0.3], alpha=0.75, label="BBVI")
-plt.xlabel("true - inferred state switch times")
-plt.ylabel("frequency")
-plt.legend()
-plt.tight_layout()
+# print(np.sum(np.array(true_z_dir) == np.array(z_dir)))
+# print(np.sum(np.array(true_z_dir) == np.array(z_dir_bbvi)))
