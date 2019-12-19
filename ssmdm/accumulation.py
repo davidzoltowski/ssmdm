@@ -12,11 +12,13 @@ from ssm.init_state_distns import InitialStateDistribution
 from ssm.emissions import _LinearEmissions, GaussianEmissions, PoissonEmissions
 from ssm.preprocessing import factor_analysis_with_imputation, interpolate_data, pca_with_imputation
 from ssm.optimizers import adam_step, rmsprop_step, sgd_step, lbfgs, bfgs, convex_combination
+from ssm.primitives import hmm_normalizer
 
 from ssmdm.misc import smooth
 
 import copy
 
+from tqdm import tqdm
 from tqdm.auto import trange
 from autograd.scipy.misc import logsumexp
 from autograd.tracer import getval
@@ -380,7 +382,7 @@ class AccumulationGaussianEmissions(GaussianEmissions):
         print("First with FA using {} steps of EM.".format(num_em_iters))
         fa, xhats, Cov_xhats, lls = factor_analysis_with_imputation(self.D, datas, masks=masks, num_iters=num_em_iters)
 
-        if self.D == 1 and base_model.transitions.type_name == "DDMTransitions":
+        if self.D == 1 and base_model.transitions.__class__.__name__ == "DDMTransitions":
 
             d_init = np.mean([y[0:3] for y in datas],axis=(0,1))
             u_sum = np.array([np.sum(u) for u in inputs])
@@ -482,7 +484,7 @@ class AccumulationPoissonEmissions(PoissonEmissions):
                    emission_optimizer="bfgs", num_optimizer_iters=1000):
         print("Initializing Emissions parameters...")
 
-        if self.D == 1 and base_model.transitions.type_name == "DDMTransitions":
+        if self.D == 1 and base_model.transitions.__class__.__name__ == "DDMTransitions":
 
             d_init = np.mean([y[0:3] for y in datas],axis=(0,1))
             u_sum = np.array([np.sum(u) for u in inputs])
@@ -676,6 +678,36 @@ class LatentAccumulation(SLDS):
             self.transitions = copy.deepcopy(arhmm.transitions)
             self.dynamics = copy.deepcopy(arhmm.observations)
 
+    @ensure_args_are_lists
+    def monte_carlo_loglikelihood(self, datas, inputs=None, masks=None, tags=None, num_samples=100):
+        """
+        Estimate marginal likelihood p(y | theta) using samples from prior
+        """
+        trial_lls = []
+        trial_sample_lls = []
+
+        print("Estimating log-likelihood...")
+        for data, input, mask, tag in zip(tqdm(datas), inputs, masks, tags):
+
+            sample_lls = []
+            samples = [self.sample(data.shape[0], input=input, tag=tag)
+                       for sample in range(num_samples)]
+
+            for sample in samples:
+
+                z, x = sample[:2]
+                sample_ll = np.sum(self.emissions.log_likelihoods(data, input, mask, tag, x))
+                sample_lls.append(sample_ll)
+
+                assert np.isfinite(sample_ll)
+
+            trial_ll = logsumexp(sample_lls) - np.log(num_samples)
+            trial_lls.append(trial_ll)
+            trial_sample_lls.append(sample_lls)
+
+        ll = np.sum(trial_lls)
+
+        return ll, trial_lls, trial_sample_lls
 
 class AccumulationInitialStateDistribution(InitialStateDistribution):
     def __init__(self, K, D, M=0):
