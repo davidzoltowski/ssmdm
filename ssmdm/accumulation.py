@@ -26,7 +26,7 @@ from autograd.misc import flatten
 from autograd import value_and_grad
 
 class AccumulationRaceTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=400):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == D+1
         assert D >= 1
         super(AccumulationRaceTransitions, self).__init__(K, D, M)
@@ -84,7 +84,7 @@ class AccumulationRaceSoftTransitions(RecurrentOnlyTransitions):
         pass
 
 class DDMTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=400):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 3
         assert D == 1
         # assert M == 1
@@ -183,9 +183,8 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
         # diagonal dynamics for each state
         # only learn dynamics for accumulation state
         self.learn_A = learn_A
+        self._a_diag = np.ones((D,1))
         if self.learn_A:
-            a_diag=np.ones((D,1))
-            self._a_diag = a_diag
             mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
             mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
             self._As = self._a_diag*mask1 + mask2
@@ -262,6 +261,13 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
     #     mask = np.vstack((np.eye(self.D)[None,:,:], np.zeros((self.K-1,self.D,self.D))))
     #     self.Vs = self._betas * mask
 
+    def log_prior(self):
+        alpha = 1.1 # or 0.02
+        beta = 1e-3 # or 0.02
+        dyn_vars = np.exp(self.accum_log_sigmasq)
+        var_prior = np.sum( -(alpha+1) * np.log(dyn_vars) - np.divide(beta, dyn_vars))
+        return var_prior
+
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
@@ -291,7 +297,7 @@ class AccumulationGLMObservations(AutoRegressiveDiagonalNoiseObservations):
         self.accum_log_sigmasq = np.log(1e-3)*np.ones(D,)
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
         mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
-        self.bound_variance = 1e-5
+        self.bound_variance = 1e-4
         self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
 
         # Set the remaining parameters to fixed values
@@ -462,20 +468,9 @@ class AccumulationPoissonEmissions(PoissonEmissions):
         xhat = smooth(xhat,10)
 
         if self.bin_size < 1:
-            # xhat = np.clip(xhat, -0.9, 0.9)
-            xhat = np.clip(xhat, -1.02, 1.02)
-        # for t in range(xhat.shape[0]):
-        #     if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
-        #     # if np.median(xhat[np.max([0,t-2]):t+3])>0.99 and t>0:
-        #         xhat[np.minimum(0,t-2):] = 1.01*np.ones(np.shape(xhat[np.minimum(0,t-2):]))
-        #         xhat[:np.maximum(0,t-2)] = 0.0*np.ones(np.shape(xhat[:np.maximum(0,t-2)]))
-        #         break
-        #     if np.all(xhat[np.max([0,t-2]):t+3]<-0.99) and t>2:
-        #     # if np.median(xhat[np.max([0,t-2]):t+3])>0.99 and t>0:
-        #         xhat[np.minimum(0,t-2):] = -1.01*np.ones(np.shape(xhat[np.minimum(0,t-2):]))
-        #         xhat[:np.maximum(0,t-2)] = 0.0*np.ones(np.shape(xhat[:np.maximum(0,t-2)]))
-        #         break
+            xhat = np.clip(xhat, -0.95, 0.95)
 
+        # in all models, x starts in between boundaries at [-1,1]
         if np.abs(xhat[0]).any()>1.0:
                 xhat[0] = 0.05*npr.randn(1,self.D)
         return xhat

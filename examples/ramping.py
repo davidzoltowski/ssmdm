@@ -80,7 +80,7 @@ test_ramp.emissions.Cs[0] =  C.reshape((N,1))
 # fit model
 q_elbos, q_lem = test_ramp.fit(ys, inputs=us, method="laplace_em",
 								  variational_posterior="structured_meanfield",
-								  variational_posterior_kwargs={"initial_variance":1e-5},
+								  variational_posterior_kwargs={"initial_variance":1e-4},
 								  alpha=0.5, num_iters=50, initialize=False)
 
 plt.ion()
@@ -100,7 +100,9 @@ def plot_posterior_spikes(q,model,ys,us,tr=0):
 	Jinv = np.linalg.inv(J)
 	q_lem_std = np.sqrt(np.diag(Jinv))
 
-	q_lem_z = model.most_likely_states(q_lem_x, ys[tr])
+    q_z = q_lem.mean_discrete_states[tr][0]
+    q_lem_z = np.argmax(q_z,axis=1)
+    # q_lem_z = model.most_likely_states(q_lem_x, ys[tr])
 
 	f, (a0, a1, a2) = plt.subplots(3, 1, gridspec_kw={'height_ratios': [1, 3.5, 1]}, figsize=[8,6])
 

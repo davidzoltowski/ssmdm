@@ -28,7 +28,7 @@ from scipy.special import gammaln
 
 
 class RampingSoftTransitions(RecurrentOnlyTransitions):
-    def __init__(self, K, D, M=0, scale=100):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 2
         assert D == 1
         super(RampingSoftTransitions, self).__init__(K, D, M)
@@ -79,7 +79,7 @@ class RampingTransitions(RecurrentTransitions):
         pass
 
 class RampingLowerBoundTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=100.0):
+    def __init__(self, K, D, M=0, scale=200.0):
         assert K == 3
         assert D == 1
         super(RampingLowerBoundTransitions, self).__init__(K, D, M)
@@ -196,11 +196,10 @@ class RampingPoissonEmissions(PoissonEmissions):
     def params(self, value):
         self.Cs = value
 
-    # def log_prior(self):
-    #     a = 2.0
-    #     b = 0.05
-    #     return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
-        # return np.sum(gamma.logpdf(self.Cs, 2, scale=1/0.025))
+    def log_prior(self):
+        a = 2.0
+        b = 0.05
+        return np.sum((a-1.0) * np.log(self.Cs[0]) - b*self.Cs[0])
 
     # this thresholds at 1.0. Can keep (or not)
     # def forward(self, x, input, tag):
@@ -215,8 +214,8 @@ class RampingPoissonEmissions(PoissonEmissions):
         for t in range(xhat.shape[0]):
             if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
                 xhat[np.minimum(0,t-2):] = 1.01*np.ones(np.shape(xhat[np.minimum(0,t-2):]))
-                xhat[:np.maximum(0,t-2)] = 0.5*np.ones(np.shape(xhat[:np.maximum(0,t-2)]))
-                break
+                xhat[:np.maximum(0,t-2)] = np.clip(xhat[:np.maximum(0,t-2)], -0.5,0.95)
+
         if np.abs(xhat[0])>1.0:
                 xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat
@@ -311,14 +310,15 @@ class RampingInitialStateDistribution(InitialStateDistribution):
         self.log_pi0 = self.log_pi0[perm]
 
     @property
-    def init_state_distn(self):
+    def initial_state_distn(self):
         return np.exp(self.log_pi0 - logsumexp(self.log_pi0))
+
+    @property
+    def log_initial_state_distn(self):
+        return self.log_pi0 - logsumexp(self.log_pi0)
 
     def log_prior(self):
         return 0
-
-    def log_initial_state_distn(self, data, input, mask, tag):
-        return self.log_pi0 - logsumexp(self.log_pi0)
 
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         self.log_pi0 = self.log_pi0
