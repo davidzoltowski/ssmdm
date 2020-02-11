@@ -19,7 +19,7 @@ from ssmdm.misc import smooth
 import copy
 
 from tqdm.auto import trange
-from autograd.scipy.misc import logsumexp
+from autograd.scipy.special import logsumexp
 from autograd.tracer import getval
 from autograd.misc import flatten
 from autograd import value_and_grad
