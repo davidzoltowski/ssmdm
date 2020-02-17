@@ -36,7 +36,7 @@ latent_acc.emissions.ds[0] = 40 + 4.0 * npr.randn(N)
 T = 100 # number of time bins
 trial_time = 1.0 # trial length in seconds
 dt = 0.01 # bin size in seconds
-N_samples = 100
+N_samples = 250
 
 # input statistics
 total_rate = 40 # the sum of the right and left poisson process rates is 40
@@ -89,24 +89,25 @@ test_acc_lds = copy.deepcopy(test_acc)
 init_params = copy.deepcopy(test_acc.params)
 
 # fit model
-init_var = 1e-2
+init_var = 1e-4
 q_elbos_lem, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 						variational_posterior="structured_meanfield",
-						num_iters=10, alpha=0.5, initialize=False,
+						num_iters=100, alpha=0.5, initialize=False,
 						variational_posterior_kwargs={"initial_variance":init_var})
 
 q_elbos_lds, q_lds = test_acc_lds.fit(ys, inputs=us, method="bbvi",
 						variational_posterior="lds",
-						num_iters=25, initialize=False,
+						num_iters=1, initialize=False,
 						variational_posterior_kwargs={"initial_variance":init_var})
 
 plt.ion()
 plt.figure()
-plt.plot(q_elbos_lem, label="vLEM")
+q_elbos_lem_total = np.concatenate((q_elbos_lem, q_elbos_lem2[1:]))
+plt.plot(np.concatenate((q_elbos_lem, q_elbos_lem2[1:])), label="vLEM")
 plt.plot(q_elbos_lds, label="BBVI, LDS")
 plt.xlabel("iteration")
 plt.ylabel("ELBO")
-plt.ylim([q_elbos_lds[0]-1e4, max(q_elbos_lem+q_elbos_lds)+1e4])
+plt.ylim([q_elbos_lds[0]-1e4, max(q_elbos_lem2)+1e4])
 plt.legend()
 plt.tight_layout()
 
@@ -201,7 +202,7 @@ sim_psths_2 = plot_psths(sim_ys_2, us+us+us, 1, N);
 r2_lem = compute_r2(true_psths, sim_psths_1)
 r2_mf = compute_r2(true_psths, sim_psths_2)
 psth_list=[true_psths, sim_psths_1, sim_psths_2]
-plot_neurons2 = npr.permutation(np.arange(N))[:3]
+# plot_neurons2 = npr.permutation(np.arange(N))[:3]
 plot_multiple_psths(psth_list, plot_neurons2)
 
 plt.gcf().axes[3].set_ylim(plt.gcf().axes[0].get_ylim())
@@ -256,3 +257,17 @@ plt.tight_layout()
 
 # print(np.sum(np.array(true_z_dir) == np.array(z_dir)))
 # print(np.sum(np.array(true_z_dir) == np.array(z_dir_bbvi)))
+
+# save simulated experiment
+# comp_2D_vlem_bbvi
+params_vlem = test_acc.params
+params_lds = test_acc_lds.params
+q_params_vlem = q_lem.params
+q_params_lds = q_lds.params
+np.savez("simexp_comp_vlem_bbvi_2Dacc.npz", params_true=latent_acc.params,
+		params_vlem=params_vlem, params_lds=params_lds,
+		q_params_vlem=q_params_vlem, q_params_lds=q_params_lds,
+		elbos_vlem=q_elbos_lem_total, elbos_lds=q_elbos_lds,
+		ys=ys, xs=xs, us=us, zs=zs, bin_size=bin_size,
+		transition_Rs=latent_acc.transitions.Rs,
+		init_params=init_params, init_var=init_var)
