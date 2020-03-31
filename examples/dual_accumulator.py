@@ -26,7 +26,7 @@ latent_acc = LatentAccumulation(N, K, D, M=M,
 								emission_kwargs={"bin_size":bin_size})
 
 # set params
-betas = 0.075*np.ones((D,))
+betas = 0.05*np.ones((D,))
 sigmas = np.log(1e-3)*np.ones((D,))
 latent_acc.dynamics.params = (betas, sigmas, latent_acc.dynamics.params[2])
 latent_acc.emissions.Cs[0] = 4 * npr.randn(N,D) + npr.choice([-15,15],(N,D))
@@ -36,7 +36,7 @@ latent_acc.emissions.ds[0] = 40 + 4.0 * npr.randn(N)
 T = 100 # number of time bins
 trial_time = 1.0 # trial length in seconds
 dt = 0.01 # bin size in seconds
-N_samples = 100
+N_samples = 500
 
 # input statistics
 total_rate = 40 # the sum of the right and left poisson process rates is 40
@@ -73,7 +73,9 @@ test_acc = LatentAccumulation(N, K, D, M=M,
 								emission_kwargs={"bin_size":bin_size})
 betas0 = 0.02+0.08*npr.rand()*np.ones((D,))
 sigmas0 = np.log((4e-5+3.5e-3*npr.rand()))*np.ones((D,))
-test_acc.dynamics.params = (betas0, sigmas0, test_acc.dynamics.params[2])
+# test_acc.dynamics.params = (betas0, sigmas0, test_acc.dynamics.params[2])
+test_acc.dynamics.params = (betas0, sigmas0)
+# test_acc.dynamics.params = (betas, sigmas)
 
 # Initialize C, d
 u_sum = np.array([np.sum(u[:,0] - u[:,1]) for u in us])
@@ -86,13 +88,15 @@ test_acc.emissions.ds[0] = d_init
 test_acc.emissions.Cs[0] = C_init
 test_acc_mf = copy.deepcopy(test_acc)
 test_acc_lds = copy.deepcopy(test_acc)
+# test_acc.emissions.Cs = latent_acc.emissions.Cs 
+# test_acc.emissions.ds = latent_acc.emissions.ds
 init_params = copy.deepcopy(test_acc.params)
 
 # fit model
-init_var = 1e-2
+init_var = 1e-5
 q_elbos_lem, q_lem = test_acc.fit(ys, inputs=us, method="laplace_em",
 						variational_posterior="structured_meanfield",
-						num_iters=10, alpha=0.5, initialize=False,
+						num_iters=50, alpha=0.5, initialize=False, continuous_optimizer="newton", 
 						variational_posterior_kwargs={"initial_variance":init_var})
 
 q_elbos_lds, q_lds = test_acc_lds.fit(ys, inputs=us, method="bbvi",

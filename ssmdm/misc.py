@@ -122,28 +122,21 @@ def simulate_accumulator(model, inputs, num_repeats=1):
 
     return ys
 
-def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-'):
-    if fig is None:
-        plt.figure()
+def compute_psths(ys, inputs, num_partitions=3, num_bins_smooth=3):
+    # num_partitions - number of partitions above and below 0
+
     # get time bins, number of neurons
     T, N = ys[0].shape
 
-    # number of partitions above and below 0
-    num_partitions = 3
-
     # this function plots the input-conditioned PSTH of a neuron
-    assert np.shape(inputs)[2] == 1 or np.shape(inputs)[2] == 2
-    if np.shape(inputs)[2] == 1:
+    # assert np.shape(inputs)[2] == 1 or np.shape(inputs)[2] == 2
+    if inputs[0].shape[1] == 1:
         u_sums = np.array([np.sum(u) for u in inputs])
-    elif np.shape(inputs)[2] == 2:
+    elif inputs[0].shape[1] == 2:
         u_sums = np.array([np.sum(u[:,0] - u[:,1]) for u in inputs])
 
-    # split inputs into thirds above zero and thirds below zero
-    # plot "zero" as black, its own category if it exists
-    # above zero -> blue
-    # below zero -> red
-
     # get sorting index
+    # import ipdb; ipdb.set_trace()
     idx_sort = np.argsort(u_sums)
     u_sorted = u_sums[idx_sort]
     u_below_0 = np.where(u_sorted<0)[0][-1]
@@ -159,23 +152,51 @@ def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-'):
     all_idx = idx_below_0 + [idx_0] + idx_above_0
     y_psths = []
     for idx in all_idx:
+        # import ipdb
+        # ipdb.set_trace()
         if idx.shape[0] > 0:
             y_idx = [ys[i] for i in idx]
-            y_psths.append(np.mean(y_idx,axis=0) / bin_size)
+            # y_psths.append(np.mean(y_idx,axis=0) / bin_size)
+            y_psths.append(mean_diff_dims(y_idx) / bin_size)
         else:
             y_psths.append(np.zeros((0,N)))
 
     # rearrange to be neuron by psth
     neuron_psths = [[psth[:,n] for psth in y_psths] for n in range(N)]
-    smoothed_psths = [[smooth(row[:,None],10) for row in psth] for psth in neuron_psths]
+    if num_bins_smooth > 1:
+        neuron_psths = [[smooth(row[:,None],num_bins_smooth) for row in psth] for psth in neuron_psths]
+
+    return neuron_psths
+
+def mean_diff_dims(xs):
+    # if xs consists of Ti by N arrays, with Ti \neq Tj,
+    # compute the mean across the first dimension
+    N = xs[0].shape[1]
+    T_max = max([x.shape[0] for x in xs])
+    counts = np.zeros((T_max,N))
+    means = np.zeros((T_max,N))
+    for x in xs:
+        Ti = x.shape[0]
+        means[:Ti,:] += x
+        counts[:Ti,:] += 1.0
+    return np.divide(means, counts)
+
+def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-'):
+    if fig is None:
+        plt.figure()
+
+    # get time bins, number of neurons
+    T, N = ys[0].shape
+    neuron_psths = compute_psths(ys, inputs)
+
     # plot
     colors = [[1.0,0.0,0.0], [1.0,0.3,0.3], [1.0,0.6,0.6],
                 'k', [0.6,0.6,1.0], [0.3,0.3,1.0], [0.0,0.0,1.0]]
     for n in range(N):
         plt.subplot(num_row,num_col,n+1)
         for coh in range(len(neuron_psths[n])):
-            plt.plot(smoothed_psths[n][coh],color=colors[coh],linestyle=linestyle,alpha=0.9, linewidth=1)
-    return smoothed_psths
+            plt.plot(neuron_psths[n][coh],color=colors[coh],linestyle=linestyle,alpha=0.9, linewidth=1)
+    return 
 
 def plot_neuron_psth(neuron_psth, linestyle='-'):
     # for 3 coherences on each side, plus zero
