@@ -176,9 +176,57 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, optimizer="lbfgs", **kwargs):
+    def m_step(self, expectations, datas, inputs, masks, tags, 
+                continuous_expectations=None, optimizer="lbfgs", **kwargs):
         Observations.m_step(self, expectations, datas, inputs, masks, tags, optimizer=optimizer, **kwargs)
 
+    # def m_step(self, expectations, datas, inputs, masks, tags,
+    #            continuous_expectations=None, **kwargs):
+    #     """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
+
+    #     K, D, M, lags = self.K, self.D, self.M, 1
+
+    #     # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
+    #     nu0 = 2.0 * 1.1     # 2 times \alpha
+    #     Psi0 = 2.0 * 1e-3   # 2 times \beta
+
+    #     # Collect sufficient statistics
+    #     if continuous_expectations is None:
+    #         ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
+    #     else:
+    #         ExuxuTs, ExuyTs, EyyTs, Ens = \
+    #             self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+
+    #     # remove bias block
+    #     ExuxuTs = ExuxuTs[:,:-1,:-1]
+    #     ExuyTs = ExuyTs[:,:-1,:]
+
+    #     # initialize new parameters
+    #     betas = np.zeros_like(self.beta)
+    #     accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
+    #     # V = np.zeros_like(self._V)
+
+    #     # this only works if input and latent dimensions are same
+    #     assert self.D == self.M 
+    #     assert self.learn_V is False
+
+    #     # Solve for the first state only.
+    #     # You need to take into account contributions of identity dynamics? 
+    #     # Remove contributions of first dimension, since enforcing identity dynamics. 
+    #     ExuxuTs = 
+    #     W = np.linalg.solve(ExuxuTs[0,1:,1:], ExuyTs[0,1:,1:]).T
+    #     beta = np.copy(W)
+
+    #     # Solve for the MAP estimate of the covariance
+    #         sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
+    #         nu = nu0 + Ens[0]
+    #         accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
+
+    #     params = betas, accum_log_sigmasq
+    #     params = params + (a_diag, ) if self.learn_A else params
+    #     self.params = params 
+
+    #     return 
 
 class RampingPoissonEmissions(PoissonEmissions):
     def __init__(self, N, K, D, M=0, single_subspace=True, link="softplus", bin_size=0.01):

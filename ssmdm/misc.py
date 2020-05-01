@@ -168,7 +168,7 @@ def compute_psths(ys, inputs, num_partitions=3, num_bins_smooth=3):
 
     return neuron_psths
 
-def mean_diff_dims(xs):
+def mean_diff_dims(xs, min_counts=5):
     # if xs consists of Ti by N arrays, with Ti \neq Tj,
     # compute the mean across the first dimension
     N = xs[0].shape[1]
@@ -179,9 +179,13 @@ def mean_diff_dims(xs):
         Ti = x.shape[0]
         means[:Ti,:] += x
         counts[:Ti,:] += 1.0
-    return np.divide(means, counts)
+    
+    # min counts for returning mean 
+    out = np.divide(means, counts)
+    out[counts<min_counts] = np.nan
+    return out
 
-def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-'):
+def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-', ylim=None):
     if fig is None:
         plt.figure()
 
@@ -196,15 +200,19 @@ def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-'):
         plt.subplot(num_row,num_col,n+1)
         for coh in range(len(neuron_psths[n])):
             plt.plot(neuron_psths[n][coh],color=colors[coh],linestyle=linestyle,alpha=0.9, linewidth=1)
+            if ylim is not None:
+                plt.ylim(ylim)
     return 
 
-def plot_neuron_psth(neuron_psth, linestyle='-'):
+def plot_neuron_psth(neuron_psth, linestyle='-', ylim=None):
     # for 3 coherences on each side, plus zero
     colors = [[1.0,0.0,0.0], [1.0,0.3,0.3], [1.0,0.6,0.6],
                 'k', [0.6,0.6,1.0], [0.3,0.3,1.0], [0.0,0.0,1.0]]
     for coh in range(len(neuron_psth)):
         if coh != 3:
             plt.plot(neuron_psth[coh], color=colors[coh], linestyle=linestyle, alpha=0.9)
+            if ylim is not None:
+                plt.ylim(ylim)
 
     return
 
@@ -223,7 +231,7 @@ def compute_r2(true_psths, sim_psths):
         true_psth = true_psths[i]
         sim_psth = sim_psths[i]
         true_psth_mean = [true_psth[coh] for coh in range(len(true_psth)) if true_psth[coh].shape[0] > 0]
-        mean_PSTH = np.mean(true_psth_mean)
+        mean_PSTH = np.nanmean(np.vstack(true_psth_mean))
 
         r2_num = 0.0
         r2_den = 0.0
@@ -233,8 +241,8 @@ def compute_r2(true_psths, sim_psths):
         for j in range(NC):
             T = true_psth[j].shape[0]
             if T > 0:
-                r2_num += np.sum( (true_psth[j] - sim_psth[j])**2)
-                r2_den += np.sum( (mean_PSTH - true_psth[j])**2)
+                r2_num += np.nansum( (true_psth[j] - sim_psth[j][:T])**2)
+                r2_den += np.nansum( (mean_PSTH - true_psth[j])**2)
 
         r2[i] = 1 - r2_num / r2_den
 
@@ -254,5 +262,17 @@ def plot_multiple_psths(psth_list, neuron_idx=None):
         for j in range(num_neurons):
             plt.subplot(num_neurons, num_models, (j)*num_models + i + 1)
             plot_neuron_psth(psth_list[i][neuron_idx[j]])
+
+    return
+
+def plot_psth_grid(psths, num_row=1, num_col=1, ylim=None):
+    # takes as input a list of (list of) PSTHs
+    # each PSTH is a list of PSTHs for different neurons from the same model
+    # plotting is row (neuron) by model
+    num_neurons = len(psths)
+    plt.figure()
+    for i in range(num_neurons):
+        plt.subplot(num_row,num_col,i+1)
+        plot_neuron_psth(psths[i], ylim=ylim)
 
     return

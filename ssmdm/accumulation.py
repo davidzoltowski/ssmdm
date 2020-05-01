@@ -175,6 +175,50 @@ class DDMCollapsingTransitions(RecurrentTransitions):
     def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
         pass
 
+class DDMNonlinearCollapsingTransitions(RecurrentTransitions):
+    def __init__(self, K, D, M=0, scale=200):
+        assert K == 3
+        assert D == 1
+        super(DDMNonlinearCollapsingTransitions, self).__init__(K, D, M)
+
+        # Parameters linking past observations to state distribution
+        self.log_Ps = -scale*np.ones((K,K)) + np.diag(np.concatenate(([scale],2.0*scale*np.ones(K-1))))
+        self.Ws = scale * np.eye(K,M)
+        self.Ws[0][0] = 0.0
+        self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
+
+        self.ap = np.log(0.75) # 0.5 - ap is value the boundary collapses to
+        self.lamb = 50.0
+
+    @property
+    def params(self):
+    #     return (self.ap, self.lamb)
+        return ()
+
+    @params.setter
+    def params(self, value):
+    #     self.ap, self.lamb = value
+        pass
+
+    def log_transition_matrices(self, data, input, mask, tag):
+        def bound_func(t, a, ap, lamb, k):
+            return a - (1 - np.exp(-(t / lamb)**k)) * (0.0 * a + np.exp(ap))
+        T, D = data.shape
+        # Previous state effect
+        log_Ps = np.tile(self.log_Ps[None, :, :], (T-1, 1, 1))
+        # Input effect
+        boundary_input = 1. - bound_func(input[1:], 1.0, self.ap, self.lamb, 2)
+        log_Ps = log_Ps + np.dot(boundary_input, self.Ws.T)[:, None, :]
+        # Past observations effect
+        log_Ps = log_Ps + np.dot(data[:-1], self.Rs.T)[:, None, :]
+        return log_Ps - logsumexp(log_Ps, axis=2, keepdims=True)
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    def m_step(self, expectations, datas, inputs, masks, tags, optimizer="lbfgs", **kwargs):
+        Transitions.m_step(self, expectations, datas, inputs, masks, tags, optimizer=optimizer, **kwargs)
+
 
 class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D, M, lags=1, learn_A=True, learn_V=False):
@@ -271,67 +315,67 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    # def m_step(self, expectations, datas, inputs, masks, tags, 
-    #             continuous_expectations=None, **kwargs):
-        # Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
+    def m_step(self, expectations, datas, inputs, masks, tags, 
+                continuous_expectations=None, **kwargs):
+        Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
 
-    def m_step(self, expectations, datas, inputs, masks, tags,
-               continuous_expectations=None, **kwargs):
-        """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
+    # def m_step(self, expectations, datas, inputs, masks, tags,
+    #            continuous_expectations=None, **kwargs):
+    #     """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
 
-        K, D, M, lags = self.K, self.D, self.M, 1
+    #     K, D, M, lags = self.K, self.D, self.M, 1
 
-        # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
-        nu0 = 2.0 * 1.1     # 2 times \alpha
-        Psi0 = 2.0 * 1e-3   # 2 times \beta
+    #     # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
+    #     nu0 = 2.0 * 1.1     # 2 times \alpha
+    #     Psi0 = 2.0 * 1e-3   # 2 times \beta
 
-        # Collect sufficient statistics
-        if continuous_expectations is None:
-            ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
-        else:
-            ExuxuTs, ExuyTs, EyyTs, Ens = \
-                self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+    #     # Collect sufficient statistics
+    #     if continuous_expectations is None:
+    #         ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
+    #     else:
+    #         ExuxuTs, ExuyTs, EyyTs, Ens = \
+    #             self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
 
-        # remove bias block
-        ExuxuTs = ExuxuTs[:,:-1,:-1]
-        ExuyTs = ExuyTs[:,:-1,:]
+    #     # remove bias block
+    #     ExuxuTs = ExuxuTs[:,:-1,:-1]
+    #     ExuyTs = ExuyTs[:,:-1,:]
 
-        # initialize new parameters
-        a_diag = np.zeros_like(self._a_diag)
-        betas = np.zeros_like(self._betas)
-        accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
-        # V = np.zeros_like(self._V)
+    #     # initialize new parameters
+    #     a_diag = np.zeros_like(self._a_diag)
+    #     betas = np.zeros_like(self._betas)
+    #     accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
+    #     # V = np.zeros_like(self._V)
 
-        # this only works if input and latent dimensions are same
-        assert self.D == self.M 
-        assert self.learn_V is False
+    #     # this only works if input and latent dimensions are same
+    #     assert self.D == self.M 
+    #     assert self.learn_V is False
 
-        # Solve for each dimension separately and for the first state only.
-        # Other states have no dynamics parameters. 
-        for d in range(D):
+    #     # Solve for each dimension separately and for the first state only.
+    #     # Other states have no dynamics parameters. 
+    #     for d in range(D):
 
-            # get relevant dimensions of expections
-            ExuxuTs_d = np.array([[ExuxuTs[0,d,d]  , ExuxuTs[0,d,d+D]],
-                                 [ExuxuTs[0,d+D,d], ExuxuTs[0,d+D,d+D]]])
-            # ExuxuTs_d = ExuxuTs[tuple(np.meshgrid(np.arange(d,D+M,D), np.arange(d,D+M,D), indexing='ij'))]
+    #         # get relevant dimensions of expections
+    #         ExuxuTs_d = np.array([[ExuxuTs[0,d,d]  , ExuxuTs[0,d,d+D]],
+    #                              [ExuxuTs[0,d+D,d], ExuxuTs[0,d+D,d+D]]])
+    #         # ExuxuTs_d = ExuxuTs[tuple(np.meshgrid(np.arange(d,D+M,D), np.arange(d,D+M,D), indexing='ij'))]
 
-            ExuyTs_d = ExuyTs[0,[d,d+D],d]
-            # ExuyTs_d = np.array([ExuyTs[0,d,d], ExuyTs[0,d+D,d]])
+    #         ExuyTs_d = ExuyTs[0,[d,d+D],d]
+    #         # ExuyTs_d = np.array([ExuyTs[0,d,d], ExuyTs[0,d+D,d]])
 
-            W = np.linalg.solve(ExuxuTs_d, ExuyTs_d).T
-            a_diag[d] = W[0]
-            betas[d] = W[1]
+    #         W = np.linalg.solve(ExuxuTs_d, ExuyTs_d).T
+    #         a_diag[d] = W[0]
+    #         betas[d] = W[1]
 
-            # Solve for the MAP estimate of the covariance
-            sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
-            nu = nu0 + Ens[0]
-            accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
+    #         # Solve for the MAP estimate of the covariance
+    #         sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
+    #         nu = nu0 + Ens[0]
+    #         accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
 
-        params = betas, accum_log_sigmasq
-        params = params + (a_diag, ) if self.learn_A else params
-        self.params = params 
+    #     params = betas, accum_log_sigmasq
+    #     params = params + (a_diag, ) if self.learn_A else params
+    #     self.params = params 
 
-        return 
+    #     return 
 
 class AccumulationGLMObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D, M, lags=1):
@@ -391,7 +435,8 @@ class AccumulationGLMObservations(AutoRegressiveDiagonalNoiseObservations):
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, **kwargs):
+    def m_step(self, expectations, datas, inputs, masks, tags, 
+               continuous_expectations=None, **kwargs):
         Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
 
 class Accumulation(HMM):
@@ -410,7 +455,8 @@ class Accumulation(HMM):
             race=AccumulationRaceTransitions,
             ddmsoft=DDMSoftTransitions,
             ddm=DDMTransitions,
-            ddmcollapsing=DDMCollapsingTransitions)
+            ddmcollapsing=DDMCollapsingTransitions,
+            ddmnlncollapsing=DDMNonlinearCollapsingTransitions)
         transition_kwargs = transition_kwargs or {}
         transitions = transition_classes[transitions](K, D, M=M, **transition_kwargs)
 
@@ -673,7 +719,8 @@ class LatentAccumulation(SLDS):
             race=AccumulationRaceTransitions,
             ddmsoft=DDMSoftTransitions,
             ddm=DDMTransitions,
-            ddmcollapsing=DDMCollapsingTransitions)
+            ddmcollapsing=DDMCollapsingTransitions,
+            ddmnlncollapsing=DDMNonlinearCollapsingTransitions)
         self.transitions_label = transitions
         self.transition_kwargs = transition_kwargs
         transition_kwargs = transition_kwargs or {}
