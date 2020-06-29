@@ -54,7 +54,7 @@ class RampingSoftTransitions(RecurrentOnlyTransitions):
 
 
 class RampingTransitions(RecurrentTransitions):
-    def __init__(self, K, D, M=0, scale=100):
+    def __init__(self, K, D, M=0, scale=200):
         assert K == 2
         assert D == 1
         super(RampingTransitions, self).__init__(K, D, M)
@@ -130,7 +130,7 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         self.x0 = x0 # mu init
 
         # and the noise variances
-        self.base_var=1e-5
+        self.base_var=1e-4
         mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
         mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
         self._log_sigmasq = self.log_sigma_scale * mask1 + np.log(self.base_var) * mask2
@@ -163,70 +163,64 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         self.mu_init = self.x0 * np.ones((self.K,1))
         self._log_sigmasq_init = self.log_sigma_scale * mask1 + np.log(self.base_var) * mask2
 
-    def log_prior(self):
-        beta_mean = np.zeros(np.shape(self.beta)[0])
-        beta_cov = (0.1**2)*np.eye(np.shape(self.beta)[0])
-        dyn_var = np.exp(self.log_sigma_scale)
-        alpha = 1.1 # or 0.02
-        beta = 1e-3 # or 0.02
-        return np.sum(stats.multivariate_normal_logpdf(np.array([self.beta]), beta_mean, beta_cov)) \
-                + np.sum(-0.5 * (self.x0 - 0.5)**2 / 1.0) \
-                + alpha*np.log(beta) - gammaln(alpha) - (alpha+1)*np.log(dyn_var) - beta/dyn_var
+    # def log_prior(self):
+    #     beta_mean = np.zeros(np.shape(self.beta)[0])
+    #     beta_cov = (0.1**2)*np.eye(np.shape(self.beta)[0])
+    #     dyn_var = np.exp(self.log_sigma_scale)
+    #     alpha = 1.1 # or 0.02
+    #     beta = 1e-3 # or 0.02
+    #     return np.sum(stats.multivariate_normal_logpdf(np.array([self.beta]), beta_mean, beta_cov)) \
+    #             + np.sum(-0.5 * (self.x0 - 0.5)**2 / 1.0) \
+    #             + np.sum(alpha*np.log(beta) - gammaln(alpha) - (alpha+1)*np.log(dyn_var) - beta/dyn_var)
 
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, 
-                continuous_expectations=None, optimizer="lbfgs", **kwargs):
-        Observations.m_step(self, expectations, datas, inputs, masks, tags, optimizer=optimizer, **kwargs)
+    # def m_step(self, expectations, datas, inputs, masks, tags, 
+                # continuous_expectations=None, optimizer="lbfgs", **kwargs):
+        # Observations.m_step(self, expectations, datas, inputs, masks, tags, optimizer=optimizer, **kwargs)
 
-    # def m_step(self, expectations, datas, inputs, masks, tags,
-    #            continuous_expectations=None, **kwargs):
-    #     """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
+    def m_step(self, expectations, datas, inputs, masks, tags,
+               continuous_expectations=None, **kwargs):
+        """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
 
-    #     K, D, M, lags = self.K, self.D, self.M, 1
+        K, D, M, lags = self.K, self.D, self.M, 1
 
-    #     # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
-    #     nu0 = 2.0 * 1.1     # 2 times \alpha
-    #     Psi0 = 2.0 * 1e-3   # 2 times \beta
+        # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
+        nu0 = 2.0 * 1.1     # 2 times \alpha
+        Psi0 = 2.0 * 1e-3   # 2 times \beta
 
-    #     # Collect sufficient statistics
-    #     if continuous_expectations is None:
-    #         ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
-    #     else:
-    #         ExuxuTs, ExuyTs, EyyTs, Ens = \
-    #             self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+        # Collect sufficient statistics
+        if continuous_expectations is None:
+            ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
+            x_means = datas
+        else:
+            ExuxuTs, ExuyTs, EyyTs, Ens = \
+                self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+            x_means = [exp[1] for exp in continuous_expectations]
 
-    #     # remove bias block
-    #     ExuxuTs = ExuxuTs[:,:-1,:-1]
-    #     ExuyTs = ExuyTs[:,:-1,:]
+        # remove bias block
+        ExuxuTs = ExuxuTs[:,:-1,:-1]
+        ExuyTs = ExuyTs[:,:-1,:]
 
-    #     # initialize new parameters
-    #     betas = np.zeros_like(self.beta)
-    #     accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
-    #     # V = np.zeros_like(self._V)
+        # V_d = E[u_t u_t^T]^{-1} * (E[y_t u_t^T]  - E[x_{t-1} u_t^T])
+        Euu_d = ExuxuTs[0,1:,1:] 
+        Exu_d = ExuxuTs[0,0,1:]
+        Eyu_d = ExuyTs[0,1:,0]
+        beta = np.linalg.solve(Euu_d, Eyu_d - Exu_d).T
+        W = np.concatenate((np.array([1.0]), beta))
+        x0 = np.mean([x[0] for x in x_means])
+        
+        # Solve for the MAP estimate of the covariance
+        # should include estimate of initial state - ignore for now (TODO)
+        sqerr = EyyTs[0,:,:] - 2 * W @ ExuyTs[0,:,:] + W @ ExuxuTs[0,:,:] @ W.T
+        nu = nu0 + Ens[0]
+        log_sigma_scale = np.log((sqerr + Psi0) / (nu + self.D + 1))
 
-    #     # this only works if input and latent dimensions are same
-    #     assert self.D == self.M 
-    #     assert self.learn_V is False
+        params = beta, log_sigma_scale, x0
+        self.params = params 
 
-    #     # Solve for the first state only.
-    #     # You need to take into account contributions of identity dynamics? 
-    #     # Remove contributions of first dimension, since enforcing identity dynamics. 
-    #     ExuxuTs = 
-    #     W = np.linalg.solve(ExuxuTs[0,1:,1:], ExuyTs[0,1:,1:]).T
-    #     beta = np.copy(W)
-
-    #     # Solve for the MAP estimate of the covariance
-    #         sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
-    #         nu = nu0 + Ens[0]
-    #         accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
-
-    #     params = betas, accum_log_sigmasq
-    #     params = params + (a_diag, ) if self.learn_A else params
-    #     self.params = params 
-
-    #     return 
+        return 
 
 class RampingPoissonEmissions(PoissonEmissions):
     def __init__(self, N, K, D, M=0, single_subspace=True, link="softplus", bin_size=0.01):
@@ -259,11 +253,12 @@ class RampingPoissonEmissions(PoissonEmissions):
         yhat = smooth(data,20)
         xhat = self.link(np.clip(yhat, 0.01, np.inf))
         xhat = self._invert(xhat, input=input, mask=mask, tag=tag)
-        for t in range(xhat.shape[0]):
-            if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
-                xhat[np.minimum(0,t-2):] = 1.01*np.ones(np.shape(xhat[np.minimum(0,t-2):]))
-                xhat[:np.maximum(0,t-2)] = np.clip(xhat[:np.maximum(0,t-2)], -0.5,0.95)
-
+        # for t in range(xhat.shape[0]):
+        #     if np.all(xhat[np.max([0,t-2]):t+3]>0.99) and t>2:
+        #         # import ipdb; ipdb.set_trace()
+        #         xhat[np.maximum(0,t-2):] = 1.01*np.ones(np.shape(xhat[np.maximum(0,t-2):]))
+        #         xhat[:np.maximum(0,t-2)] = np.clip(xhat[:np.maximum(0,t-2)], -0.5,0.95)
+            
         if np.abs(xhat[0])>1.0:
                 xhat[0] = 0.5 + 0.01*npr.randn(1,np.shape(xhat)[1])
         return xhat

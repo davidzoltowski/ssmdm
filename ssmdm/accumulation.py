@@ -315,67 +315,77 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
     def initialize(self, datas, inputs=None, masks=None, tags=None):
         pass
 
-    def m_step(self, expectations, datas, inputs, masks, tags, 
-                continuous_expectations=None, **kwargs):
-        Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
+    # def m_step(self, expectations, datas, inputs, masks, tags, 
+                # continuous_expectations=None, **kwargs):
+        # Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
 
-    # def m_step(self, expectations, datas, inputs, masks, tags,
-    #            continuous_expectations=None, **kwargs):
-    #     """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
+    def m_step(self, expectations, datas, inputs, masks, tags,
+               continuous_expectations=None, **kwargs):
+        """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
 
-    #     K, D, M, lags = self.K, self.D, self.M, 1
+        K, D, M, lags = self.K, self.D, self.M, 1
 
-    #     # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
-    #     nu0 = 2.0 * 1.1     # 2 times \alpha
-    #     Psi0 = 2.0 * 1e-3   # 2 times \beta
+        # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
+        nu0 = 2.0 * 1.1     # 2 times \alpha
+        Psi0 = 2.0 * 1e-3   # 2 times \beta
 
-    #     # Collect sufficient statistics
-    #     if continuous_expectations is None:
-    #         ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
-    #     else:
-    #         ExuxuTs, ExuyTs, EyyTs, Ens = \
-    #             self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+        # Collect sufficient statistics
+        if continuous_expectations is None:
+            ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
+        else:
+            ExuxuTs, ExuyTs, EyyTs, Ens = \
+                self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
 
-    #     # remove bias block
-    #     ExuxuTs = ExuxuTs[:,:-1,:-1]
-    #     ExuyTs = ExuyTs[:,:-1,:]
+        # remove bias block
+        ExuxuTs = ExuxuTs[:,:-1,:-1]
+        ExuyTs = ExuyTs[:,:-1,:]
 
-    #     # initialize new parameters
-    #     a_diag = np.zeros_like(self._a_diag)
-    #     betas = np.zeros_like(self._betas)
-    #     accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
-    #     # V = np.zeros_like(self._V)
+        # initialize new parameters
+        a_diag = np.zeros_like(self._a_diag)
+        betas = np.zeros_like(self._betas)
+        accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
+        # V = np.zeros_like(self._V)
 
-    #     # this only works if input and latent dimensions are same
-    #     assert self.D == self.M 
-    #     assert self.learn_V is False
+        # this only works if input and latent dimensions are same
+        assert self.D == self.M 
+        assert self.learn_V is False
 
-    #     # Solve for each dimension separately and for the first state only.
-    #     # Other states have no dynamics parameters. 
-    #     for d in range(D):
+        # Solve for each dimension separately and for the first state only.
+        # Other states have no dynamics parameters. 
+        for d in range(D):
 
-    #         # get relevant dimensions of expections
-    #         ExuxuTs_d = np.array([[ExuxuTs[0,d,d]  , ExuxuTs[0,d,d+D]],
-    #                              [ExuxuTs[0,d+D,d], ExuxuTs[0,d+D,d+D]]])
-    #         # ExuxuTs_d = ExuxuTs[tuple(np.meshgrid(np.arange(d,D+M,D), np.arange(d,D+M,D), indexing='ij'))]
 
-    #         ExuyTs_d = ExuyTs[0,[d,d+D],d]
-    #         # ExuyTs_d = np.array([ExuyTs[0,d,d], ExuyTs[0,d+D,d]])
+            # get relevant dimensions of expections
+            ExuxuTs_d = np.array([[ExuxuTs[0,d,d]  , ExuxuTs[0,d,d+D]],
+                                [ExuxuTs[0,d+D,d], ExuxuTs[0,d+D,d+D]]])
 
-    #         W = np.linalg.solve(ExuxuTs_d, ExuyTs_d).T
-    #         a_diag[d] = W[0]
-    #         betas[d] = W[1]
+            ExuyTs_d = ExuyTs[0,[d,d+D],d]
 
-    #         # Solve for the MAP estimate of the covariance
-    #         sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
-    #         nu = nu0 + Ens[0]
-    #         accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
+            if self.learn_A:
 
-    #     params = betas, accum_log_sigmasq
-    #     params = params + (a_diag, ) if self.learn_A else params
-    #     self.params = params 
+                W = np.linalg.solve(ExuxuTs_d, ExuyTs_d).T
+                a_diag[d] = W[0]
+                betas[d] = W[1]
 
-    #     return 
+            else:
+
+                # V_d = E[u_t^2]^{-1} * (E[y_t u_t]  - E[x_{t-1} u_t])
+                Euu_d = ExuxuTs[0,d+D,d+D] 
+                Exu_d = ExuxuTs[0,d,d+D]
+                Eyu_d = ExuyTs[0,[d+D],d]
+                betas[d] = 1.0 / Euu_d * (Eyu_d - Exu_d)
+                W = np.array([1.0, betas[d]])
+                
+            # Solve for the MAP estimate of the covariance
+            sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
+            nu = nu0 + Ens[0]
+            accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
+
+        params = betas, accum_log_sigmasq
+        params = params + (a_diag, ) if self.learn_A else params
+        self.params = params 
+
+        return 
 
 class AccumulationGLMObservations(AutoRegressiveDiagonalNoiseObservations):
     def __init__(self, K, D, M, lags=1):
@@ -587,7 +597,7 @@ class AccumulationPoissonEmissions(PoissonEmissions):
         print("Initializing Emissions parameters...")
 
         if self.D == 1 and base_model.transitions.__class__.__name__ == "DDMTransitions":
-
+        # if self.D == 0:
             d_init = np.mean([y[0:3] for y in datas],axis=(0,1))
             u_sum = np.array([np.sum(u) for u in inputs])
             y_end = np.array([y[-3:] for y in datas])
@@ -605,6 +615,7 @@ class AccumulationPoissonEmissions(PoissonEmissions):
             xs = [base_model.sample(T=data.shape[0],input=input)[1] for data, input in zip(datas, inputs)]
             def _objective(params, itr):
                 self.params = params
+                # self.Cs = params
                 obj = 0
                 obj += self.log_prior()
                 for data, input, mask, tag, x in \
@@ -700,6 +711,22 @@ class RampStepPoissonEmissions(PoissonEmissions):
                       num_iters=num_optimizer_iters,
                       full_output=False)
 
+# from ssm.emissions import CalciumEmissions
+# from ssm.calcium_util import *
+# class AccumulationCalciumEmissions(CalciumEmissions):
+#     def __init__(self, N, K, D, M=0, single_subspace=True, link="softplus", bin_size=1.0, lags=1, S=10, **kwargs):
+#         super(AccumulationCalciumEmissions, self).__init__(N, K, D, M=M, single_subspace=single_subspace, link=link, bin_size=bin_size, **kwargs)
+#         # Make sure the input matrix Fs is set to zero and never updated
+#         self.Fs *= 0
+
+#     # Construct an emissions model
+#     @property
+#     def params(self):
+#         return self.Cs, self.ds, self.inv_etas
+
+#     @params.setter
+#     def params(self, value):
+#         self.Cs, self.ds, self.inv_etas = value
 
 class LatentAccumulation(SLDS):
     def __init__(self, N, K, D, *, M,
@@ -734,7 +761,8 @@ class LatentAccumulation(SLDS):
         emission_classes = dict(
             gaussian=AccumulationGaussianEmissions,
             poisson=AccumulationPoissonEmissions,
-            rampstep=RampStepPoissonEmissions)
+            rampstep=RampStepPoissonEmissions)#,
+            # calcium=AccumulationCalciumEmissions)
         emission_kwargs = emission_kwargs or {}
         emissions = emission_classes[emissions](N, K, D, M=M,
             single_subspace=single_subspace, **emission_kwargs)

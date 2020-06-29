@@ -204,10 +204,12 @@ def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-', ylim=None):
                 plt.ylim(ylim)
     return 
 
-def plot_neuron_psth(neuron_psth, linestyle='-', ylim=None):
+def plot_neuron_psth(neuron_psth, linestyle='-', ylim=None, flip_colors=False):
     # for 3 coherences on each side, plus zero
     colors = [[1.0,0.0,0.0], [1.0,0.3,0.3], [1.0,0.6,0.6],
                 'k', [0.6,0.6,1.0], [0.3,0.3,1.0], [0.0,0.0,1.0]]
+    if flip_colors:
+        colors.reverse()
     for coh in range(len(neuron_psth)):
         if coh != 3:
             plt.plot(neuron_psth[coh], color=colors[coh], linestyle=linestyle, alpha=0.9)
@@ -248,6 +250,32 @@ def compute_r2(true_psths, sim_psths):
 
     return r2
 
+def compute_mad(true_psths, sim_psths):
+
+    # get number of neurons
+    assert len(true_psths) == len(sim_psths)
+    N = len(true_psths)
+
+    mads = np.zeros(N)
+
+    for i in range(N):
+
+        true_psth = true_psths[i]
+        sim_psth = sim_psths[i]
+
+        mads_n = 0.0
+
+        # number of coherences, loop over
+        NC = len(true_psth)
+        for j in range(NC):
+            T = true_psth[j].shape[0]
+            if T > 0:
+                mads_n += np.nansum( np.abs(true_psth[j] - sim_psth[j][:T]) )
+
+        mads[i] = mads_n
+
+    return mads
+
 def plot_multiple_psths(psth_list, neuron_idx=None):
     # takes as input a list of (list of) PSTHs
     # each PSTH is a list of PSTHs for different neurons from the same model
@@ -265,14 +293,16 @@ def plot_multiple_psths(psth_list, neuron_idx=None):
 
     return
 
-def plot_psth_grid(psths, num_row=1, num_col=1, ylim=None):
+def plot_psth_grid(psths, num_row=1, num_col=1, ylim=None, flip_colors=False):
     # takes as input a list of (list of) PSTHs
     # each PSTH is a list of PSTHs for different neurons from the same model
     # plotting is row (neuron) by model
+    if np.shape(flip_colors) == ():
+        flip_colors = [flip_colors for i in range(num_row*num_col)]
     num_neurons = len(psths)
     plt.figure()
     for i in range(num_neurons):
         plt.subplot(num_row,num_col,i+1)
-        plot_neuron_psth(psths[i], ylim=ylim)
+        plot_neuron_psth(psths[i], ylim=ylim, flip_colors=flip_colors[i])
 
     return
