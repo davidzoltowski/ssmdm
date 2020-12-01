@@ -187,7 +187,7 @@ class DDMNonlinearCollapsingTransitions(RecurrentTransitions):
         self.Ws[0][0] = 0.0
         self.Rs = np.array([0, scale, -scale]).reshape((3, 1))
 
-        self.ap = np.log(0.75) # 0.5 - ap is value the boundary collapses to
+        self.ap = np.log(0.75) # 0.5 - np.exp(ap) is value the boundary collapses to
         self.lamb = 50.0
 
     @property

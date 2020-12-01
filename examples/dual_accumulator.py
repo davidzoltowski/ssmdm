@@ -73,9 +73,7 @@ test_acc = LatentAccumulation(N, K, D, M=M,
 								emission_kwargs={"bin_size":bin_size})
 betas0 = 0.02+0.08*npr.rand()*np.ones((D,))
 sigmas0 = np.log((4e-5+3.5e-3*npr.rand()))*np.ones((D,))
-# test_acc.dynamics.params = (betas0, sigmas0, test_acc.dynamics.params[2])
-test_acc.dynamics.params = (betas0, sigmas0)
-# test_acc.dynamics.params = (betas, sigmas)
+test_acc.dynamics.params = (betas0, sigmas0, test_acc.dynamics.params[2])
 
 # Initialize C, d
 u_sum = np.array([np.sum(u[:,0] - u[:,1]) for u in us])
@@ -88,8 +86,6 @@ test_acc.emissions.ds[0] = d_init
 test_acc.emissions.Cs[0] = C_init
 test_acc_mf = copy.deepcopy(test_acc)
 test_acc_lds = copy.deepcopy(test_acc)
-# test_acc.emissions.Cs = latent_acc.emissions.Cs 
-# test_acc.emissions.ds = latent_acc.emissions.ds
 init_params = copy.deepcopy(test_acc.params)
 
 # fit model

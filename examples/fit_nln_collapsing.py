@@ -70,11 +70,16 @@ for smpl in range(N_samples):
 def bound_func(t, a, ap, lamb, k):
 	return a - (1 - np.exp(-(t / lamb)**k)) * (0.0 * a + np.exp(ap))
 
+def bound_func2(t, b0, binf, lamb, k):
+	return b0 - (1 - np.exp(-(t / lamb)**k)) * (b0 - binf)
+
+
 plt.ion()
 plt.figure()
 for tr in range(15):
 	plt.plot(xs[tr],'k',alpha=0.6)
 ub = bound_func(np.arange(T), 1.0, latent_acc.transitions.ap, latent_acc.transitions.lamb, 3.0)
+# ub = bound_func2(np.arange(T), 1.0, 0.25, latent_acc.transitions.lamb, 3.0)
 plt.plot(np.arange(T), ub, 'b--')
 plt.plot(np.arange(T), -1.0 * ub, 'r--')
 plt.xlabel("time")
