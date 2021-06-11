@@ -207,6 +207,8 @@ class RampingObservations(AutoRegressiveDiagonalNoiseObservations):
         Euu_d = ExuxuTs[0,1:,1:] 
         Exu_d = ExuxuTs[0,0,1:]
         Eyu_d = ExuyTs[0,1:,0]
+        # import ipdb; ipdb.set_trace()
+        Euu_d = Euu_d + 1e-6 * np.eye(self.M) # temp add for numerical stability
         beta = np.linalg.solve(Euu_d, Eyu_d - Exu_d).T
         W = np.concatenate((np.array([1.0]), beta))
         x0 = np.mean([x[0] for x in x_means])
