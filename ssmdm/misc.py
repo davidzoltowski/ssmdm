@@ -204,17 +204,18 @@ def plot_psths(ys, inputs, num_row, num_col, fig=None,linestyle='-', ylim=None):
                 plt.ylim(ylim)
     return 
 
-def plot_neuron_psth(neuron_psth, linestyle='-', ylim=None, flip_colors=False):
+def plot_neuron_psth(neuron_psth, linestyle='-', ylim=None, flip_colors=False, colors=None):
     # for 3 coherences on each side, plus zero
-    colors = [[1.0,0.0,0.0], [1.0,0.3,0.3], [1.0,0.6,0.6],
-                'k', [0.6,0.6,1.0], [0.3,0.3,1.0], [0.0,0.0,1.0]]
+    if colors is None:
+        colors = [[1.0,0.0,0.0], [1.0,0.3,0.3], [1.0,0.6,0.6],
+                    'k', [0.6,0.6,1.0], [0.3,0.3,1.0], [0.0,0.0,1.0]]
     if flip_colors:
         colors.reverse()
     for coh in range(len(neuron_psth)):
-        if coh != 3:
-            plt.plot(neuron_psth[coh], color=colors[coh], linestyle=linestyle, alpha=0.9)
-            if ylim is not None:
-                plt.ylim(ylim)
+        # if coh != 3:
+        plt.plot(neuron_psth[coh], color=colors[coh], linestyle=linestyle, alpha=0.9)
+        if ylim is not None:
+            plt.ylim(ylim)
 
     return
 
