@@ -411,6 +411,187 @@ class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
 
         return 
 
+class AccumulationInputNoiseObservations(AutoRegressiveDiagonalNoiseObservations):
+    def __init__(self, K, D, M, lags=1, learn_A=True, learn_V=False, learn_sig_init=False):
+        super(AccumulationInputNoiseObservations, self).__init__(K, D, M)
+        
+        # diagonal dynamics for each state
+        # only learn dynamics for accumulation state
+        self.learn_A = learn_A
+        self._a_diag = np.ones((D,1))
+        if self.learn_A:
+            mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
+            mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
+            self._As = self._a_diag*mask1 + mask2
+        else:
+            self._As = np.tile(np.eye(D),(K,1,1))
+
+        # set input Accumulation params, one for each dimension
+        # first D inputs are accumulated in different dimensions
+        # rest of M-D inputs are applied to each dimension
+        self._betas = 0.1*np.ones(D,)
+        self.learn_V = learn_V
+        self._V = 0.0*np.ones((D, M-D)) # additional covariates, if they exist
+        self.Vs[0] = np.hstack((self._betas*np.eye(D,D), self._V))
+        for d in range(1,K):
+            self.Vs[d] *= np.zeros((D,M))
+
+        # set noise variances
+        self.accum_log_sigmasq = np.log(1e-3)*np.ones(D,)
+        mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
+        mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
+        self.bound_variance = 1e-4
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
+        self.learn_sig_init = learn_sig_init 
+        if self.learn_sig_init:
+            self.accum_log_sigmasq_init = np.log(1e-3) * np.ones(D,)
+            self._log_sigmasq_init = self.accum_log_sigmasq_init * mask1 + np.log(self.bound_variance) * mask2
+        else:
+            self._log_sigmasq_init = (self.accum_log_sigmasq + np.log(2) )* mask1 + np.log(self.bound_variance) * mask2
+
+        # Set the remaining parameters to fixed values
+        self.bs = np.zeros((K, D))
+        acc_mu_init = np.zeros((1,D))
+        self.mu_init = np.vstack((acc_mu_init,np.ones((K-1,D))))
+
+    @property
+    def params(self):
+        params = self._betas, self.accum_log_sigmasq
+        params = params + (self._a_diag,) if self.learn_A else params
+        params = params + (self._V,) if self.learn_V else params
+        params = params + (self.accum_log_sigmasq_init) if self.learn_sig_init else params
+        return params
+
+    @params.setter
+    def params(self, value):
+        self._betas, self.accum_log_sigmasq = value[:2]
+        if self.learn_A:
+            self._a_diag = value[2]
+        if self.learn_V:
+            self._V = value[-1]
+        #TODO fix above
+        if self.learn_sig_init:
+            self.accum_log_sigmasq_init = value[-1]
+
+        K, D, M = self.K, self.D, self.M
+
+        # update V
+        mask0 = np.hstack((np.eye(D), np.ones((D,M-D)))) # state K = 0
+        mask = np.vstack((mask0[None,:,:], np.zeros((K-1,D,M))))
+
+        # self.Vs = self._betas * mask
+        self.Vs = np.hstack((np.diag(self._betas), self._V)) * mask
+
+        # update sigmas
+        mask1 = np.vstack( (np.ones(D,), np.zeros((K-1,D))) )
+        mask2 = np.vstack( (np.zeros(D), np.ones((K-1,D))) )
+        self._log_sigmasq = self.accum_log_sigmasq * mask1 + np.log(self.bound_variance) * mask2
+        # self._log_sigmasq_init = (self.accum_log_sigmasq + np.log(2) )* mask1 + np.log(self.bound_variance) * mask2
+        if self.learn_sig_init:
+            self.accum_log_sigmasq_init = np.log(1e-3) * np.ones(D,)
+            self._log_sigmasq_init = self.accum_log_sigmasq_init * mask1 + np.log(self.bound_variance) * mask2
+        else:
+            self._log_sigmasq_init = (self.accum_log_sigmasq + np.log(2) )* mask1 + np.log(self.bound_variance) * mask2
+
+        # update A
+        # if self.learn_A:
+        mask1 = np.vstack( (np.eye(D)[None,:,:],np.zeros((K-1,D,D))) ) # for accum state
+        mask2 = np.vstack( (np.zeros((1,D,D)), np.tile(np.eye(D),(K-1,1,1)) ))
+        self._As = self._a_diag*mask1 + mask2
+
+    def log_prior(self):
+        alpha = 1.1 # or 0.02
+        beta = 1e-3 # or 0.02
+        dyn_vars = np.exp(self.accum_log_sigmasq)
+        var_prior = np.sum( -(alpha+1) * np.log(dyn_vars) - np.divide(beta, dyn_vars))
+        return var_prior
+
+    def initialize(self, datas, inputs=None, masks=None, tags=None):
+        pass
+
+    # def m_step(self, expectations, datas, inputs, masks, tags, 
+                # continuous_expectations=None, **kwargs):
+        # Observations.m_step(self, expectations, datas, inputs, masks, tags, **kwargs)
+
+    def m_step(self, expectations, datas, inputs, masks, tags,
+               continuous_expectations=None, **kwargs):
+        """Compute M-step, following M-Step for Gaussian Auto Regressive Observations."""
+
+        K, D, M, lags = self.K, self.D, self.M, 1
+
+        # Copy priors from log_prior. 1D InvWishart(\nu, \Psi) is InvGamma(\nu/2, \Psi/2)
+        nu0 = 2.0 * 1.1     # 2 times \alpha
+        Psi0 = 2.0 * 1e-3   # 2 times \beta
+
+        # Collect sufficient statistics
+        if continuous_expectations is None:
+            ExuxuTs, ExuyTs, EyyTs, Ens = self._get_sufficient_statistics(expectations, datas, inputs)
+        else:
+            ExuxuTs, ExuyTs, EyyTs, Ens = \
+                self._extend_given_sufficient_statistics(expectations, continuous_expectations, inputs)
+
+        # remove bias block
+        ExuxuTs = ExuxuTs[:,:-1,:-1]
+        ExuyTs = ExuyTs[:,:-1,:]
+
+        # initialize new parameters
+        a_diag = np.zeros_like(self._a_diag)
+        betas = np.zeros_like(self._betas)
+        accum_log_sigmasq = np.zeros_like(self.accum_log_sigmasq)
+        # V = np.zeros_like(self._V)
+
+        # this only works if input and latent dimensions are same
+        assert self.D == self.M 
+        assert self.learn_V is False
+
+        # Solve for each dimension separately and for the first state only.
+        # Other states have no dynamics parameters. 
+        for d in range(D):
+
+
+            # get relevant dimensions of expections
+            ExuxuTs_d = np.array([[ExuxuTs[0,d,d]  , ExuxuTs[0,d,d+D]],
+                                [ExuxuTs[0,d+D,d], ExuxuTs[0,d+D,d+D]]])
+
+            ExuyTs_d = ExuyTs[0,[d,d+D],d]
+
+            if self.learn_A:
+
+                W = np.linalg.solve(ExuxuTs_d, ExuyTs_d).T
+                a_diag[d] = W[0]
+                betas[d] = W[1]
+
+            else:
+
+                # V_d = E[u_t^2]^{-1} * (E[y_t u_t]  - E[x_{t-1} u_t])
+                Euu_d = ExuxuTs[0,d+D,d+D] 
+                Exu_d = ExuxuTs[0,d,d+D]
+                Eyu_d = ExuyTs[0,[d+D],d]
+                betas[d] = 1.0 / Euu_d * (Eyu_d - Exu_d)
+                W = np.array([1.0, betas[d]])
+                
+            # Solve for the MAP estimate of the covariance
+            sqerr = EyyTs[0,d,d] - 2 * W @ ExuyTs_d + W @ ExuxuTs_d @ W.T
+            nu = nu0 + Ens[0]
+            accum_log_sigmasq[d] = np.log((sqerr + Psi0) / (nu + d + 1))
+
+        # set based on variance of sig2
+        params = betas, accum_log_sigmasq
+        params = params + (a_diag, ) if self.learn_A else params
+
+        if self.learn_sig_init:
+            accum_log_sigmasq_init = np.zeros(self.D)
+            for d in range(self.D):
+                x0_d = np.array([data[0,d] for data in datas])
+                sqerr_d = np.sum(x0_d**2)
+                accum_log_sigmasq_init[d] = np.log(sqerr_d)
+            params = params + (self.accum_log_sigmasq_init) 
+
+        self.params = params 
+
+        return 
+
+
 # class AccumulationObservations(AutoRegressiveDiagonalNoiseObservations):
 # TODO: Add in new dynamics here for additional dimensions.
 # Compose?
